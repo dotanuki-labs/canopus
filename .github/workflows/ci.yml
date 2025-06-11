@@ -1,0 +1,159 @@
+# Copyright 2025 Dotanuki Labs
+# SPDX-License-Identifier: MIT
+
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+jobs:
+  docs-lint:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Project Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Check typos on source files
+        uses: dotanuki-labs/github-actions/quality/typos@main
+
+      - name: Lint Markdown files
+        uses: dotanuki-labs/github-actions/quality/markdown@main
+
+      - name: Check MIT license on source files
+        uses: dotanuki-labs/github-actions/foss/check-licenses@main
+        with:
+          file-patterns: "*.rs,*.yml"
+          license: "mit"
+
+  docs-build:
+    needs: docs-lint
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Project Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Build and archive documentation assets
+        uses: dotanuki-labs/github-actions/foss/prepare-ghpages@main
+
+  docker-build:
+    # TODO: after scaffoldind, add a build matrix running against arm64-linux
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Project Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Build and run with Docker
+        run: |
+          docker build -t dotanuki-labs/canopus .
+          docker run --rm -v "${PWD}/tmp" dotanuki-labs/canopus --help
+
+  rust-lint:
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Project Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Inspect and lint source files
+        run: cargo xtasks sources
+
+  rust-tests:
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Project Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Setup CI
+        uses: ./.github/actions/setup-rust
+
+      - name: Run project tests
+        run: cargo xtasks tests
+
+  rust-build:
+    needs: [rust-lint, rust-tests]
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ ubuntu-24.04, macos-15 ]
+
+    steps:
+      - name: Project Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Setup CI
+        uses: ./.github/actions/setup-rust
+        with:
+          install-extra-tools: true
+
+      - name: Generates build artifacts
+        run: cargo xtasks artifacts binaries
+
+      - name: Archive binaries
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: canopus-binaries-${{ runner.os }}
+          path: artifacts
+
+  rust-artifacts:
+    needs: rust-build
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Project Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Fetch executable from previous build
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          path: artifacts
+
+      - name: Setup CI
+        uses: ./.github/actions/setup-rust
+
+      - name: Generate additional artifacts
+        run: cargo xtasks artifacts extras
+
+      - name: Archive checksums
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: checksums.txt
+          path: artifacts/checksums.txt
+
+      - name: Archive SBOM
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: sbom-${{ github.sha }}.json
+          path: crates/canopus/canopus.cdx.json
+
+  rust-security:
+    needs: [rust-lint, rust-tests]
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Project Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Check issues with supply chain
+        run: cargo xtasks security
+
+      - name: Fetch artifacts
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          path: artifacts
+
+      - name: Build provenance for artifacts
+        uses: actions/attest-build-provenance@db473fddc028af60658334401dc6fa3ffd8669fd # v2.3.0
+        with:
+          subject-path: artifacts/**/*
+
+  all-checks:
+    runs-on: ubuntu-24.04
+    needs: [docs-lint, docker-build, rust-artifacts, rust-security]
+    steps:
+      - name: Report success
+        run: echo "Great job ✅"

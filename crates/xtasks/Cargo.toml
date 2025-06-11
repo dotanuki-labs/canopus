@@ -1,0 +1,19 @@
+[package]
+name = "xtasks"
+description = "Companion build tasks for canopus"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+homepage.workspace = true
+documentation.workspace = true
+repository.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+clap = { workspace = true, features = ["derive", "help"] }
+xshell.workspace = true
+walkdir.workspace = true
+sha2.workspace = true
+hex.workspace = true

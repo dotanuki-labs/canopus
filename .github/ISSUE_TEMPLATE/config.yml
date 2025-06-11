@@ -1,0 +1,8 @@
+# Copyright 2025 Dotanuki Labs
+# SPDX-License-Identifier: MIT
+
+blank_issues_enabled: false
+contact_links:
+  - name: Discussions Forum
+    url: https://github.com/dotanuki-labs/canopus/discussions
+    about: Use this space to ask and answer questions and follow community annoucements.

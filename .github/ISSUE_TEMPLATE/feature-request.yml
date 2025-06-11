@@ -1,0 +1,53 @@
+# Copyright 2025 Dotanuki Labs
+# SPDX-License-Identifier: MIT
+
+name: New feature request
+description: Suggest an idea or enhancement for canopus
+title: "Feature: "
+labels:
+  - enhancement
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for taking the time to request a new feature or enhancement for `canopus`
+
+        > [!WARNING]
+        > **Before opening a new issue, please read the following parts of this template carefully. Invalid or incomplete submissions take longer to triage, and may be given a lower priority or closed right away when not actionable.**
+
+
+  - type: checkboxes
+    attributes:
+      label: Before getting started
+      description: |
+        By submitting this issue, you affirm that you've satisfied the following conditions.
+      options:
+        - label: >-
+            I am **not** filing a bug/security report.
+          required: true
+        - label: >-
+            I have looked through the
+            [open issues](https://github.com/dotanuki-labs/canopus/issues?q=is%3Aissue+is%3Aopen+)
+            for a duplicate request and could not find it.
+          required: true
+
+  - type: textarea
+    attributes:
+      label: What's the problem this feature/enhancement will solve?
+      description: A clear and concise description of the problem we are trying to solve.
+      placeholder: Sometimes I miss the option of ...
+    validations:
+      required: true
+
+  - type: textarea
+    attributes:
+      label: Describe the solution you'd like
+      description: A clear and concise description of what you want to happen.
+    validations:
+      required: true
+
+  - type: textarea
+    attributes:
+      label: Additional context
+      description: |
+        Any additional context, screenshots, or other material about the feature request.

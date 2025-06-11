@@ -1,0 +1,2 @@
+# Needed while this repo is private. Removes after open-sourced
+exclude_path = ["docs"]

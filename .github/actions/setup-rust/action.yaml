@@ -1,0 +1,33 @@
+# Copyright 2025 Dotanuki Labs
+# SPDX-License-Identifier: MIT
+
+name: "Setup Rust build"
+description: "Common steps before running a Rust/Cargo task"
+
+inputs:
+    install-extra-tools:
+        description: “Patterns to look in source files, comma separated”
+        required: false
+        default: "false"
+
+runs:
+    using: "composite"
+    steps:
+        - name: Setup CI caching
+          uses: Swatinem/rust-cache@9d47c6ad4b02e050fd481d890b2ea34778fd09d6 # v2.7.8
+          with:
+              save-if: ${{ github.ref == 'refs/heads/main' }}
+
+        - name: Setup Rust and Cargo plugins
+          shell: bash
+          run: rustup show active-toolchain
+
+        - name: Install additional tools (Mac-only)
+          if:  ${{ runner.os == 'macOS' && inputs.install-extra-tools != 'false' }}
+          shell: bash
+          run: brew install coreutils
+
+        - name: Install additional tools (Linux-only)
+          if:  ${{ runner.os == 'Linux' && inputs.install-extra-tools != 'false' }}
+          shell: bash
+          run: sudo apt-get install -qy binutils-aarch64-linux-gnu gcc-aarch64-linux-gnu g++-aarch64-linux-gnu

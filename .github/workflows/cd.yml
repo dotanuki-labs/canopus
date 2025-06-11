@@ -1,0 +1,209 @@
+# Copyright 2025 Dotanuki Labs
+# SPDX-License-Identifier: MIT
+
+name: CD
+
+on: workflow_dispatch
+
+permissions:
+  id-token: write
+  contents: read
+  pages: write
+  attestations: write
+
+jobs:
+  deploy-docs:
+    runs-on: ubuntu-24.04
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Prepare documentation assets
+        uses: dotanuki-labs/github-actions/foss/prepare-ghpages@main
+
+      - name: Deploy assets to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@d6db90164ac5ed86f2b6aed7e0febac5b3c0c03e # v4.0.5
+
+  build:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: ["ubuntu-24.04", "macos-15"]
+
+    steps:
+      - name: Project Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Setup CI
+        uses: ./.github/actions/setup-rust
+        with:
+          install-extra-tools: true
+
+      - name: Cross-compilation supported targets
+        run: cargo xtasks binaries
+
+      - name: Archive binaries
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: canopus-binaries-${{ runner.os }}
+          path: artifacts
+
+  artifacts:
+    needs: build
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Project Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Fetch executable from previous build
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          path: artifacts
+
+      - name: Setup CI
+        uses: ./.github/actions/setup-rust
+
+      - name: Generate additional artifacts
+        run: cargo xtasks artifacts extras
+
+      - name: Archive checksums
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: checksums.txt
+          path: artifacts/checksums.txt
+
+      - name: Archive SBOM
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: sbom-${{ github.sha }}.json
+          path: crates/canopus/canopus.cdx.json
+
+  github-release:
+    needs: artifacts
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Project Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Fetch executable from previous build
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          path: artifacts
+
+      - name: Build provenance for binaries
+        uses: actions/attest-build-provenance@db473fddc028af60658334401dc6fa3ffd8669fd # v2.3.0
+        with:
+          subject-path: artifacts/**/*
+
+      - name: Prepare Github release
+        id: prepare-release
+        run: |
+          version=$(grep 'version' Cargo.toml | head -1 | sed "s/version[[:space:]]=[[:space:]]//g" | tr -d '"')
+          echo "version=$version" >>"$GITHUB_OUTPUT"
+
+      - name: Publish draft release on Github
+        uses: softprops/action-gh-release@72f2c25fcb47643c292f7107632f7a47c1df5cd8 # v2.3.2
+        with:
+          name: ${{ steps.prepare-release.outputs.version }}
+          tag_name: ${{ steps.prepare-release.outputs.version }}
+          token: ${{ secrets.DOTANUKI_BOT_TOKEN }}
+          generate_release_notes: true
+          draft: true
+          files: |
+            artifacts/**/*
+            canopus.cdx.json
+
+  publish-crate:
+    needs: github-release
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Project Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Setup CI
+        uses: ./.github/actions/setup-rust
+
+      - name: Publish on crates.io
+        run: cargo publish -p canopus --token ${{ secrets.CRATESIO_PUBLISH_TOKEN }}
+
+  deploy-docker-images:
+    runs-on: ${{ matrix.build-args.runner }}
+    strategy:
+      matrix:
+        build-args:
+          - platform: amd64
+            runner: ubuntu-24.04
+          - platform: arm64
+            runner: ubuntu-24.04-arm
+
+    steps:
+      - name: Project Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Docker metadata
+        id: docker-metadata
+        uses: docker/metadata-action@902fa8ec7d6ecbf8d84d538b9b233a880e428804 # v5
+        with:
+          images: ghcr.io/${{ github.repository }}
+
+      - name: Set up docker-buildx
+        uses: docker/setup-buildx-action@b5ca514318bd6ebac0fb2aedd5d36ec1b5c232a2 # v3.10.0
+
+      - name: Log in to Github Container Registry
+        uses: docker/login-action@74a5d142397b4f367a81961eba4e8cd7edddf772 # v3.4.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build container Image
+        id: build
+        uses: docker/build-push-action@263435318d21b8e681c14492fe198d362a7d2c83 # v6.18.0
+        with:
+          push: true
+          provenance: false
+          platforms: linux/${{ matrix.build-args.platform }}
+          labels: ${{ steps.docker-metadata.outputs.labels }}
+          annotations: ${{ steps.docker-metadata.outputs.annotations }}
+          outputs: type=registry,push=true
+          tags: ghcr.io/${{ github.repository }}:${{ github.sha }}-${{ matrix.build-args.platform }}
+
+  deploy-docker-manifest:
+    runs-on: ubuntu-24.04
+    needs: deploy-docker-images
+
+    steps:
+      - name: Project Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Log in to Github Container Registry
+        uses: docker/login-action@74a5d142397b4f367a81961eba4e8cd7edddf772 # v3.4.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Prepare Docker release
+        id: prepare-release
+        run: |
+          version=$(grep 'version' Cargo.toml | head -1 | sed "s/version[[:space:]]=[[:space:]]//g" | tr -d '"')
+          echo "version=$version" >>"$GITHUB_OUTPUT"
+
+      - name: Update Docker manifest
+        run: |
+          docker manifest create "$latest" --amend "$package"-amd64 --amend "$package"-arm64
+          docker manifest annotate --arch amd64 --os linux "$latest" "$package"-amd64
+          docker manifest annotate --arch arm64 --os linux "$latest" "$package"-arm64
+          docker manifest inspect "$latest"
+          docker manifest push "$latest"
+        env:
+          package: ghcr.io/${{ github.repository }}:${{ steps.prepare-release.outputs.version }}
+          latest: ghcr.io/${{ github.repository }}:latest
