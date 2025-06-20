@@ -10,15 +10,18 @@ repository.workspace = true
 authors.workspace = true
 license.workspace = true
 
-[package.metadata]
-msrv = "1.74.0"
-
 [dependencies]
 anyhow.workspace = true
 clap = { workspace = true, features = ["derive"] }
 human-panic.workspace = true
 better-panic.workspace = true
+env_logger.workspace = true
+log.workspace = true
 
 [dev-dependencies]
 assert_cmd.workspace = true
 predicates.workspace = true
+indoc.workspace = true
+temp-dir.workspace = true
+uuid.workspace = true
+assertor.workspace = true

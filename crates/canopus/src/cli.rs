@@ -1,6 +1,6 @@
 // Copyright 2025 Dotanuki Labs
 // SPDX-License-Identifier: MIT
 
-mod greeter;
+mod arguments;
 
-pub use greeter::greet;
+pub use arguments::parse_arguments;

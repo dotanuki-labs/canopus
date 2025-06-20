@@ -1,0 +1,67 @@
+// Copyright 2025 Dotanuki Labs
+// SPDX-License-Identifier: MIT
+
+use assert_cmd::Command;
+use indoc::indoc;
+use predicates::str::contains;
+use std::fs;
+use temp_dir::TempDir;
+
+fn sut() -> Command {
+    let _ = env_logger::builder().is_test(true).try_init();
+    Command::cargo_bin("canopus").expect("Failed to create a command")
+}
+
+#[test]
+fn detect_codeowners_file_on_conventional_location() {
+    let codeowners = indoc! {"
+        # Basic syntax
+        *.rs    @org/crabbers
+    "};
+
+    let temp_dir = TempDir::new().expect("Cant create temp dir");
+    let target = temp_dir.path().join("CODEOWNERS");
+    fs::write(&target, codeowners).expect("Failed to write content to CODEOWNERS file");
+
+    let project_path = target.parent().unwrap().to_str().unwrap();
+    let execution = sut().args(["validate", "-p", project_path]).assert();
+
+    execution.success();
+}
+
+#[test]
+fn detects_no_codeowners() {
+    let temp_dir = TempDir::new().expect("Cant create temp dir");
+
+    let project_path = temp_dir.path().to_str().unwrap();
+    let execution = sut().args(["validate", "-p", project_path]).assert();
+
+    execution
+        .failure()
+        .stderr(contains("No CODEOWNERS definition found in the project"));
+}
+
+#[test]
+fn fails_with_multiple_codeowners_location() {
+    let codeowners = indoc! {"
+        # Basic syntax
+        *.rs    @org/crabbers
+    "};
+
+    let temp_dir = TempDir::new().expect("Cant create temp dir");
+
+    let some_config = temp_dir.path().join("CODEOWNERS");
+    fs::write(&some_config, codeowners).expect("Failed to write content to CODEOWNERS file");
+
+    fs::create_dir_all(temp_dir.child(".github")).expect("Failed to create .github dir");
+
+    let another_config = temp_dir.path().join(".github/CODEOWNERS");
+    fs::write(&another_config, codeowners).expect("Failed to write content to CODEOWNERS file");
+
+    let project_path = some_config.parent().unwrap().to_str().unwrap();
+    let execution = sut().args(["validate", "-p", project_path]).assert();
+
+    execution
+        .failure()
+        .stderr(contains("Found multiple definitions for CODEOWNERS"));
+}
