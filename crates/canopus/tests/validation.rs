@@ -13,9 +13,8 @@ fn sut() -> Command {
 }
 
 #[test]
-fn detect_codeowners_file_on_conventional_location() {
+fn should_detect_single_codeowners_file() {
     let codeowners = indoc! {"
-        # Basic syntax
         *.rs    @org/crabbers
     "};
 
@@ -30,7 +29,7 @@ fn detect_codeowners_file_on_conventional_location() {
 }
 
 #[test]
-fn detects_no_codeowners() {
+fn should_detect_no_codeowners() {
     let temp_dir = TempDir::new().expect("Cant create temp dir");
 
     let project_path = temp_dir.path().to_str().unwrap();
@@ -42,7 +41,7 @@ fn detects_no_codeowners() {
 }
 
 #[test]
-fn fails_with_multiple_codeowners_location() {
+fn should_detect_multiple_codeowners() {
     let codeowners = indoc! {"
         # Basic syntax
         *.rs    @org/crabbers
