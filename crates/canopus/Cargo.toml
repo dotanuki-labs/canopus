@@ -12,10 +12,10 @@ license.workspace = true
 
 [dependencies]
 anyhow.workspace = true
-clap = { workspace = true, features = ["derive"] }
-human-panic.workspace = true
 better-panic.workspace = true
+clap = { workspace = true, features = ["derive"] }
 env_logger.workspace = true
+human-panic.workspace = true
 log.workspace = true
 
 [dev-dependencies]
@@ -23,5 +23,4 @@ assert_cmd.workspace = true
 predicates.workspace = true
 indoc.workspace = true
 temp-dir.workspace = true
-uuid.workspace = true
 assertor.workspace = true

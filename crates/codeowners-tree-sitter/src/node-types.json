@@ -1,0 +1,162 @@
+[
+  {
+    "type": "comment",
+    "named": true,
+    "fields": {}
+  },
+  {
+    "type": "group",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "group_name",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "line_with_ending",
+    "named": true,
+    "fields": {}
+  },
+  {
+    "type": "line_without_ending",
+    "named": true,
+    "fields": {}
+  },
+  {
+    "type": "owner",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "email",
+          "named": true
+        },
+        {
+          "type": "group",
+          "named": true
+        },
+        {
+          "type": "user_owner",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "path",
+    "named": true,
+    "fields": {}
+  },
+  {
+    "type": "rule",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": true,
+      "types": [
+        {
+          "type": "owner",
+          "named": true
+        },
+        {
+          "type": "path",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "source_file",
+    "named": true,
+    "root": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": false,
+      "types": [
+        {
+          "type": "comment",
+          "named": true
+        },
+        {
+          "type": "line_with_ending",
+          "named": true
+        },
+        {
+          "type": "line_without_ending",
+          "named": true
+        },
+        {
+          "type": "rule",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "user_owner",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "user_identifier",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "\n",
+    "named": false
+  },
+  {
+    "type": "\"",
+    "named": false
+  },
+  {
+    "type": "#",
+    "named": false
+  },
+  {
+    "type": "@",
+    "named": false
+  },
+  {
+    "type": "[",
+    "named": false
+  },
+  {
+    "type": "\\",
+    "named": false
+  },
+  {
+    "type": "]",
+    "named": false
+  },
+  {
+    "type": "email",
+    "named": true
+  },
+  {
+    "type": "group_name",
+    "named": true
+  },
+  {
+    "type": "user_identifier",
+    "named": true
+  }
+]

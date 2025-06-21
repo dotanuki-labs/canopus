@@ -1,7 +1,6 @@
 [target.'cfg(all())']
 rustflags = [
     # Extended checks for clippy
-    "-Dunsafe_code",
     "-Wclippy::all",
     "-Wclippy::todo",
     "-Wclippy::unimplemented",
