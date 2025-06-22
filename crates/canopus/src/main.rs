@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 mod cli;
+mod core;
 mod features;
 
 fn main() -> anyhow::Result<()> {
