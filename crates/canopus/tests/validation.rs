@@ -64,3 +64,35 @@ fn should_detect_multiple_codeowners() {
         .failure()
         .stderr(contains("Found multiple definitions for CODEOWNERS"));
 }
+
+#[test]
+fn should_detect_glob_syntax_issue() {
+    let codeowners = indoc! {"
+        [z-a]*.rs    org/crabbers
+    "};
+
+    let temp_dir = TempDir::new().expect("Cant create temp dir");
+    let target = temp_dir.path().join("CODEOWNERS");
+    fs::write(&target, codeowners).expect("Failed to write content to CODEOWNERS file");
+
+    let project_path = target.parent().unwrap().to_str().unwrap();
+    let execution = sut().args(["validate", "-p", project_path]).assert();
+
+    execution.failure().stderr(contains("error parsing glob"));
+}
+
+#[test]
+fn should_detect_owner_syntax_issue() {
+    let codeowners = indoc! {"
+        *.rs    org/crabbers
+    "};
+
+    let temp_dir = TempDir::new().expect("Cant create temp dir");
+    let target = temp_dir.path().join("CODEOWNERS");
+    fs::write(&target, codeowners).expect("Failed to write content to CODEOWNERS file");
+
+    let project_path = target.parent().unwrap().to_str().unwrap();
+    let execution = sut().args(["validate", "-p", project_path]).assert();
+
+    execution.failure().stderr(contains("cannot parse owner"));
+}
