@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 use assert_cmd::Command;
+use assert_cmd::assert::Assert;
 use indoc::indoc;
 use predicates::str::contains;
 use std::fs;
@@ -12,20 +13,13 @@ fn sut() -> Command {
     Command::cargo_bin("canopus").expect("Failed to create a command")
 }
 
-#[test]
-fn should_detect_single_codeowners_file() {
-    let codeowners = indoc! {"
-        *.rs    @org/crabbers
-    "};
-
+fn validate_codeowners(contents: &str) -> Assert {
     let temp_dir = TempDir::new().expect("Cant create temp dir");
     let target = temp_dir.path().join("CODEOWNERS");
-    fs::write(&target, codeowners).expect("failed to write content to CODEOWNERS file");
-
+    fs::write(&target, contents).expect("Failed to write content to CODEOWNERS file");
     let project_path = target.parent().unwrap().to_str().unwrap();
-    let execution = sut().args(["validate", "-p", project_path]).assert();
 
-    execution.success();
+    sut().args(["validate", "-p", project_path]).assert()
 }
 
 #[test]
@@ -66,17 +60,23 @@ fn should_detect_multiple_codeowners() {
 }
 
 #[test]
+fn should_detect_single_codeowners_file() {
+    let codeowners = indoc! {"
+        *.rs    @org/crabbers
+    "};
+
+    let execution = validate_codeowners(codeowners);
+
+    execution.success();
+}
+
+#[test]
 fn should_detect_glob_syntax_issue() {
     let codeowners = indoc! {"
         [z-a]*.rs    org/crabbers
     "};
 
-    let temp_dir = TempDir::new().expect("Cant create temp dir");
-    let target = temp_dir.path().join("CODEOWNERS");
-    fs::write(&target, codeowners).expect("failed to write content to CODEOWNERS file");
-
-    let project_path = target.parent().unwrap().to_str().unwrap();
-    let execution = sut().args(["validate", "-p", project_path]).assert();
+    let execution = validate_codeowners(codeowners);
 
     execution.failure().stderr(contains("error parsing glob"));
 }
@@ -87,12 +87,7 @@ fn should_detect_owner_syntax_issue() {
         *.rs    org/crabbers
     "};
 
-    let temp_dir = TempDir::new().expect("Cant create temp dir");
-    let target = temp_dir.path().join("CODEOWNERS");
-    fs::write(&target, codeowners).expect("Failed to write content to CODEOWNERS file");
-
-    let project_path = target.parent().unwrap().to_str().unwrap();
-    let execution = sut().args(["validate", "-p", project_path]).assert();
+    let execution = validate_codeowners(codeowners);
 
     execution.failure().stderr(contains("cannot parse owner"));
 }
