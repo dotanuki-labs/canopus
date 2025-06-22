@@ -1,6 +1,8 @@
 // Copyright 2025 Dotanuki Labs
 // SPDX-License-Identifier: MIT
 
+use globset::Glob;
+
 #[derive(Clone, Debug, PartialEq)]
 pub enum Owner {
     GithubUser(String),
@@ -14,11 +16,11 @@ impl TryFrom<&str> for Owner {
     fn try_from(value: &str) -> anyhow::Result<Self> {
         if value.starts_with("@") {
             let normalized = value.replacen("@", "", 1);
-            if value.contains("/") {
-                return Ok(Owner::GithubTeam(normalized));
+            return if value.contains("/") {
+                Ok(Owner::GithubTeam(normalized))
             } else {
-                return Ok(Owner::GithubUser(normalized));
-            }
+                Ok(Owner::GithubUser(normalized))
+            };
         };
 
         if email_address::EmailAddress::is_valid(value) {
@@ -31,7 +33,7 @@ impl TryFrom<&str> for Owner {
 
 #[derive(Debug, PartialEq)]
 pub struct Ownership {
-    pub pattern: String,
+    pub glob: Glob,
     pub owners: Vec<Owner>,
     pub inline_comment: Option<String>,
 }
@@ -44,24 +46,56 @@ pub enum CodeOwnersEntry {
 }
 
 impl CodeOwnersEntry {
-    fn new_comment(comment: &str) -> Self {
-        CodeOwnersEntry::Comment(comment.replace("#", "").trim().to_string())
+    fn try_new_comment(line_number: usize, comment: &str) -> anyhow::Result<Self> {
+        if comment.is_empty() {
+            return Err(anyhow::anyhow!("L{} : cannot accept empty comment", line_number));
+        };
+
+        let sanitized = comment.replace("#", "").trim().to_string();
+        Ok(CodeOwnersEntry::Comment(sanitized))
     }
 
-    fn new_rule(pattern: &str, owners: &[Owner]) -> Self {
-        CodeOwnersEntry::Rule(Ownership {
-            pattern: pattern.to_string(),
-            owners: owners.to_vec(),
-            inline_comment: None,
-        })
+    fn try_new_rule(line_number: usize, pattern: &str, owners: Vec<Owner>) -> anyhow::Result<Self> {
+        if owners.is_empty() {
+            return Err(anyhow::anyhow!("L{} : no owners detected", line_number));
+        }
+
+        match Glob::new(pattern) {
+            Ok(glob) => {
+                let ownership = Ownership {
+                    glob,
+                    owners,
+                    inline_comment: None,
+                };
+
+                Ok(CodeOwnersEntry::Rule(ownership))
+            },
+            Err(_) => Err(anyhow::anyhow!("L{} : cannot parse glob pattern", line_number)),
+        }
     }
 
-    fn new_commented_rule(pattern: &str, owners: &[Owner], comment: &str) -> Self {
-        CodeOwnersEntry::Rule(Ownership {
-            pattern: pattern.to_string(),
-            owners: owners.to_vec(),
+    fn try_new_commented_rule(
+        line_number: usize,
+        pattern: &str,
+        owners: Vec<Owner>,
+        comment: &str,
+    ) -> anyhow::Result<Self> {
+        if comment.is_empty() {
+            return Err(anyhow::anyhow!("L{} : cannot accept empty comment", line_number));
+        };
+
+        if owners.is_empty() {
+            return Err(anyhow::anyhow!("L{} : no owners detected", line_number));
+        }
+
+        let glob = Glob::new(pattern)?;
+        let ownership = Ownership {
+            glob,
+            owners,
             inline_comment: Some(comment.to_string()),
-        })
+        };
+
+        Ok(CodeOwnersEntry::Rule(ownership))
     }
 }
 
@@ -77,12 +111,12 @@ impl TryFrom<(usize, &str)> for CodeOwnersEntry {
         if line_contents.is_empty() {
             Ok(CodeOwnersEntry::BlankLine)
         } else if line_contents.starts_with("#") {
-            Ok(CodeOwnersEntry::new_comment(line_contents))
+            CodeOwnersEntry::try_new_comment(line_number, line_contents)
         } else {
             let mut parts = line_contents.split_whitespace();
 
-            let Some(pattern) = parts.next() else {
-                return Err(anyhow::anyhow!("Invalid line: {}", line_number));
+            let Some(raw_pattern) = parts.next() else {
+                return Err(anyhow::anyhow!("Cannot parse line: {}", line_number));
             };
 
             let mut owners: Vec<Owner> = vec![];
@@ -102,15 +136,11 @@ impl TryFrom<(usize, &str)> for CodeOwnersEntry {
                 }
             }
 
-            if owners.is_empty() {
-                return Err(anyhow::anyhow!("No owners detected: {}", line_number));
-            }
-
-            if inline_comment_detected {
+            return if inline_comment_detected {
                 let inline_comment = inline_comments.join(" ");
-                return Ok(CodeOwnersEntry::new_commented_rule(pattern, &owners, &inline_comment));
+                CodeOwnersEntry::try_new_commented_rule(line_number, raw_pattern, owners, &inline_comment)
             } else {
-                return Ok(CodeOwnersEntry::new_rule(pattern, &owners));
+                CodeOwnersEntry::try_new_rule(line_number, raw_pattern, owners)
             };
         }
     }
@@ -147,10 +177,11 @@ mod tests {
         let codeowners = CodeOwners::try_from(codeowners_rules)?;
 
         let expected = CodeOwners {
-            entries: vec![CodeOwnersEntry::new_rule(
+            entries: vec![CodeOwnersEntry::try_new_rule(
+                0,
                 "*.rs",
-                &[Owner::try_from("@org/rustaceans")?],
-            )],
+                vec![Owner::try_from("@org/rustaceans")?],
+            )?],
         };
 
         assertor::assert_that!(codeowners).is_equal_to(expected);
@@ -169,9 +200,9 @@ mod tests {
 
         let expected = CodeOwners {
             entries: vec![
-                CodeOwnersEntry::new_comment("Rules for dotanuki labs"),
+                CodeOwnersEntry::try_new_comment(0, "Rules for dotanuki labs")?,
                 CodeOwnersEntry::BlankLine,
-                CodeOwnersEntry::new_rule("*.rs", &[Owner::GithubTeam("org/rustaceans".to_string())]),
+                CodeOwnersEntry::try_new_rule(2, "*.rs", vec![Owner::GithubTeam("org/rustaceans".to_string())])?,
             ],
         };
 
@@ -188,11 +219,12 @@ mod tests {
         let codeowners = CodeOwners::try_from(codeowners_rules).unwrap();
 
         let expected = CodeOwners {
-            entries: vec![CodeOwnersEntry::new_commented_rule(
+            entries: vec![CodeOwnersEntry::try_new_commented_rule(
+                0,
                 "*.rs",
-                &[Owner::GithubTeam("org/rustaceans".to_string())],
+                vec![Owner::GithubTeam("org/rustaceans".to_string())],
                 "Enforce global control",
-            )],
+            )?],
         };
 
         assertor::assert_that!(codeowners).is_equal_to(expected);
@@ -208,13 +240,14 @@ mod tests {
         let codeowners = CodeOwners::try_from(codeowners_rules)?;
 
         let expected = CodeOwners {
-            entries: vec![CodeOwnersEntry::new_rule(
+            entries: vec![CodeOwnersEntry::try_new_rule(
+                0,
                 "*.rs",
-                &[
+                vec![
                     Owner::GithubUser("ubiratansoares".to_string()),
                     Owner::EmailAddress("rust@dotanuki.dev".to_string()),
                 ],
-            )],
+            )?],
         };
 
         assertor::assert_that!(codeowners).is_equal_to(expected);
