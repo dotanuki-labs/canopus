@@ -105,7 +105,7 @@ impl TryFrom<(usize, &str)> for CodeOwnersEntry {
             let mut parts = line_contents.split_whitespace();
 
             let Some(raw_pattern) = parts.next() else {
-                return Err(anyhow::anyhow!("Cannot parse line: {}", line_number));
+                return Err(anyhow::anyhow!("cannot parse line: {}", line_number));
             };
 
             let glob = Glob::new(raw_pattern)?;
