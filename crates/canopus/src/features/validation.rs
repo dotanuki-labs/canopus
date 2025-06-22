@@ -1,11 +1,10 @@
 // Copyright 2025 Dotanuki Labs
 // SPDX-License-Identifier: MIT
 
-use crate::features;
 use std::path::PathBuf;
 
 pub fn validate_codeowners(project_location: &PathBuf) -> anyhow::Result<()> {
-    let codeowners = features::check_conventional_codeowners_location(project_location)?;
+    let codeowners = check_conventional_codeowners_location(project_location)?;
     log::info!("Codeowners file found at: {}", codeowners.to_string_lossy());
     Ok(())
 }

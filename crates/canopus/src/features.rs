@@ -5,7 +5,6 @@ mod validation;
 
 use std::fmt::{Display, Formatter};
 use std::path::PathBuf;
-pub use validation::check_conventional_codeowners_location;
 
 #[derive(Debug)]
 pub enum RequestedFeature {
