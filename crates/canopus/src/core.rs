@@ -1,7 +1,34 @@
 // Copyright 2025 Dotanuki Labs
 // SPDX-License-Identifier: MIT
 
+use ValidationError::{CannotParseComment, CannotParseGlobPattern, CannotParseOwner, NoOwnersDetected};
+use anyhow::bail;
 use globset::Glob;
+use std::fmt::{Display, Formatter};
+
+#[derive(Debug)]
+enum ValidationError {
+    CannotParseComment { line: usize },
+    CannotParseGlobPattern { line: usize },
+    CannotParseOwner { line: usize },
+    NoOwnersDetected { line: usize },
+}
+
+impl Display for ValidationError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        let (line, message) = match self {
+            CannotParseComment { line } => (line, "cannot parse comment"),
+            CannotParseGlobPattern { line } => (line, "cannot parse glob pattern"),
+            CannotParseOwner { line } => (line, "cannot parse owner"),
+            NoOwnersDetected { line } => (line, "cannot parse owner"),
+        };
+        f.write_fmt(format_args!("L{} : {}", line, message))
+    }
+}
+
+impl std::error::Error for ValidationError {
+    // Already satisfied
+}
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Owner {
@@ -10,10 +37,10 @@ pub enum Owner {
     EmailAddress(String),
 }
 
-impl TryFrom<&str> for Owner {
+impl TryFrom<(usize, &str)> for Owner {
     type Error = anyhow::Error;
 
-    fn try_from(value: &str) -> anyhow::Result<Self> {
+    fn try_from((line, value): (usize, &str)) -> anyhow::Result<Self> {
         if value.starts_with("@") {
             let normalized = value.replacen("@", "", 1);
             return if value.contains("/") {
@@ -27,7 +54,7 @@ impl TryFrom<&str> for Owner {
             return Ok(Owner::EmailAddress(value.to_string()));
         };
 
-        Err(anyhow::anyhow!("cannot parse owner : {}", value))
+        bail!(CannotParseOwner { line });
     }
 }
 
@@ -48,7 +75,7 @@ pub enum CodeOwnersEntry {
 impl CodeOwnersEntry {
     fn try_new_comment(line_number: usize, comment: &str) -> anyhow::Result<Self> {
         if comment.is_empty() {
-            return Err(anyhow::anyhow!("L{} : cannot accept empty comment", line_number));
+            bail!(CannotParseComment { line: line_number });
         };
 
         let sanitized = comment.replace("#", "").trim().to_string();
@@ -57,7 +84,7 @@ impl CodeOwnersEntry {
 
     fn try_new_rule(line_number: usize, glob: Glob, owners: Vec<Owner>) -> anyhow::Result<Self> {
         if owners.is_empty() {
-            return Err(anyhow::anyhow!("L{} : no owners detected", line_number));
+            bail!(NoOwnersDetected { line: line_number });
         }
 
         let ownership = Ownership {
@@ -76,11 +103,11 @@ impl CodeOwnersEntry {
         comment: &str,
     ) -> anyhow::Result<Self> {
         if comment.is_empty() {
-            return Err(anyhow::anyhow!("L{} : cannot accept empty comment", line_number));
+            bail!(CannotParseComment { line: line_number });
         };
 
         if owners.is_empty() {
-            return Err(anyhow::anyhow!("L{} : no owners detected", line_number));
+            bail!(NoOwnersDetected { line: line_number });
         }
 
         let ownership = Ownership {
@@ -108,7 +135,7 @@ impl TryFrom<(usize, &str)> for CodeOwnersEntry {
                 return Err(anyhow::anyhow!("cannot parse line: {}", line_number));
             };
 
-            let glob = Glob::new(raw_pattern)?;
+            let glob = Glob::new(raw_pattern).map_err(|_| CannotParseGlobPattern { line: line_number })?;
             let mut owners: Vec<Owner> = vec![];
             let mut inline_comments: Vec<&str> = vec![];
             let mut inline_comment_detected = false;
@@ -122,7 +149,7 @@ impl TryFrom<(usize, &str)> for CodeOwnersEntry {
                 if inline_comment_detected {
                     inline_comments.push(item);
                 } else {
-                    owners.push(Owner::try_from(item)?);
+                    owners.push(Owner::try_from((line_number, item))?);
                 }
             }
 
@@ -176,7 +203,7 @@ mod tests {
             entries: vec![CodeOwnersEntry::try_new_rule(
                 0,
                 Glob::new("*.rs")?,
-                vec![Owner::try_from("@org/rustaceans")?],
+                vec![Owner::try_from((0, "@org/rustaceans"))?],
             )?],
         };
 
