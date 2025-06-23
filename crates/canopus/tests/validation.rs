@@ -78,7 +78,7 @@ fn should_detect_glob_syntax_issue() {
 
     let execution = validate_codeowners(codeowners);
 
-    execution.failure().stderr(contains("error parsing glob"));
+    execution.failure().stderr(contains("cannot parse glob pattern"));
 }
 
 #[test]

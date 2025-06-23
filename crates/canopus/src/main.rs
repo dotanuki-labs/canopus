@@ -10,6 +10,5 @@ fn main() -> anyhow::Result<()> {
     human_panic::setup_panic!();
 
     let feature = cli::parse_arguments()?;
-    features::execute(feature)?;
-    Ok(())
+    features::execute(feature)
 }
