@@ -73,7 +73,7 @@ fn should_detect_single_codeowners_file() {
 #[test]
 fn should_detect_glob_syntax_issue() {
     let codeowners = indoc! {"
-        [z-a]*.rs    org/crabbers
+        [z-a]*.rs    @org/crabbers
     "};
 
     let execution = validate_codeowners(codeowners);
