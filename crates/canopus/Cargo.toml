@@ -17,6 +17,7 @@ clap = { workspace = true, features = ["derive"] }
 env_logger.workspace = true
 email_address.workspace = true
 globset.workspace = true
+ignore.workspace = true
 human-panic.workspace = true
 log.workspace = true
 

@@ -67,7 +67,9 @@ fn should_detect_single_codeowners_file() {
 
     let execution = validate_codeowners(codeowners);
 
-    execution.success();
+    execution
+        .failure()
+        .stderr(contains("pattern *.rs does not match any project path"));
 }
 
 #[test]

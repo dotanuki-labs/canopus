@@ -1,28 +1,48 @@
 // Copyright 2025 Dotanuki Labs
 // SPDX-License-Identifier: MIT
 
-use ValidationError::{CannotParseComment, CannotParseGlobPattern, CannotParseOwner, NoOwnersDetected};
+use ValidationError::{
+    CannotParseComment, CannotParseGlobPattern, CannotParseOwner, DanglingGlobPatterns, NoOwnersDetected,
+};
 use anyhow::bail;
 use globset::Glob;
 use std::fmt::{Display, Formatter};
 
 #[derive(Debug)]
-enum ValidationError {
+pub struct DanglingGlobPattern {
+    pub line_number: usize,
+    pub pattern: String,
+}
+
+#[derive(Debug)]
+pub enum ValidationError {
     CannotParseComment { line: usize },
     CannotParseGlobPattern { line: usize },
     CannotParseOwner { line: usize },
     NoOwnersDetected { line: usize },
+    DanglingGlobPatterns { patterns: Vec<DanglingGlobPattern> },
 }
 
 impl Display for ValidationError {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        let (line, message) = match self {
-            CannotParseComment { line } => (line, "cannot parse comment"),
-            CannotParseGlobPattern { line } => (line, "cannot parse glob pattern"),
-            CannotParseOwner { line } => (line, "cannot parse owner"),
-            NoOwnersDetected { line } => (line, "cannot parse owner"),
+        let message = match self {
+            CannotParseComment { line } => format!("L{} : cannot parse comment", line),
+            CannotParseGlobPattern { line } => format!("L{} : cannot parse glob pattern", line),
+            CannotParseOwner { line } => format!("L{} : cannot parse owner", line),
+            NoOwnersDetected { line } => format!("L{} : no owners found", line),
+            DanglingGlobPatterns { patterns } => patterns
+                .iter()
+                .map(|dangling| {
+                    format!(
+                        "L{} : pattern {} does not match any project path",
+                        dangling.line_number, dangling.pattern
+                    )
+                })
+                .collect::<Vec<String>>()
+                .join("\n"),
         };
-        f.write_fmt(format_args!("L{} : {}", line, message))
+
+        f.write_str(&message)
     }
 }
 
@@ -60,6 +80,7 @@ impl TryFrom<(usize, &str)> for Owner {
 
 #[derive(Debug, PartialEq)]
 pub struct Ownership {
+    pub line_number: usize,
     pub glob: Glob,
     pub owners: Vec<Owner>,
     pub inline_comment: Option<String>,
@@ -88,6 +109,7 @@ impl CodeOwnersEntry {
         }
 
         let ownership = Ownership {
+            line_number,
             glob,
             owners,
             inline_comment: None,
@@ -111,6 +133,7 @@ impl CodeOwnersEntry {
         }
 
         let ownership = Ownership {
+            line_number,
             glob,
             owners,
             inline_comment: Some(comment.to_string()),
@@ -132,7 +155,7 @@ impl TryFrom<(usize, &str)> for CodeOwnersEntry {
             let mut parts = line_contents.split_whitespace();
 
             let Some(raw_pattern) = parts.next() else {
-                return Err(anyhow::anyhow!("cannot parse line: {}", line_number));
+                panic!("L{} : expecting non-empty line", line_number)
             };
 
             let glob = Glob::new(raw_pattern).map_err(|_| CannotParseGlobPattern { line: line_number })?;
