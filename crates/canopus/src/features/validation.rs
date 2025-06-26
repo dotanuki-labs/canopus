@@ -58,7 +58,7 @@ fn check_non_matching_glob_patterns(project_path: &Path, code_owners: &CodeOwner
 }
 
 fn check_conventional_codeowners_location(project_location: &PathBuf) -> anyhow::Result<PathBuf> {
-    log::info!("Project location : {:?}", project_location);
+    log::info!("Project location : {project_location:?}");
 
     let possible_locations = [
         project_location.join(".github/CODEOWNERS"),
@@ -72,11 +72,11 @@ fn check_conventional_codeowners_location(project_location: &PathBuf) -> anyhow:
         .collect::<Vec<_>>();
 
     if config_files.is_empty() {
-        anyhow::bail!("no CODEOWNERS definition found in the project");
+        bail!("no CODEOWNERS definition found in the project");
     }
 
     if config_files.len() > 1 {
-        anyhow::bail!("found multiple definitions for CODEOWNERS");
+        bail!("found multiple definitions for CODEOWNERS");
     }
 
     let codeowners = config_files
