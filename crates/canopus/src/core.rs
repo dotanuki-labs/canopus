@@ -26,10 +26,10 @@ pub enum ValidationError {
 impl Display for ValidationError {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         let message = match self {
-            CannotParseComment { line } => format!("L{} : cannot parse comment", line),
-            CannotParseGlobPattern { line } => format!("L{} : cannot parse glob pattern", line),
-            CannotParseOwner { line } => format!("L{} : cannot parse owner", line),
-            NoOwnersDetected { line } => format!("L{} : no owners found", line),
+            CannotParseComment { line } => format!("L{line} : cannot parse comment"),
+            CannotParseGlobPattern { line } => format!("L{line} : cannot parse glob pattern"),
+            CannotParseOwner { line } => format!("L{line} : cannot parse owner"),
+            NoOwnersDetected { line } => format!("L{line} : no owners found"),
             DanglingGlobPatterns { patterns } => patterns
                 .iter()
                 .map(|dangling| {
@@ -155,7 +155,7 @@ impl TryFrom<(usize, &str)> for CodeOwnersEntry {
             let mut parts = line_contents.split_whitespace();
 
             let Some(raw_pattern) = parts.next() else {
-                panic!("L{} : expecting non-empty line", line_number)
+                panic!("L{line_number} : expecting non-empty line")
             };
 
             let glob = Glob::new(raw_pattern).map_err(|_| CannotParseGlobPattern { line: line_number })?;

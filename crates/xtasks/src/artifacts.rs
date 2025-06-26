@@ -44,8 +44,8 @@ fn build_targets(shell: &Shell) -> anyhow::Result<()> {
             for target in targets {
                 cmd!(shell, "rustup target add {target}").run()?;
                 cmd!(shell, "cargo build --release --target {target}").run()?;
-                let binary = format!("target/{}/release/canopus", target);
-                let destination = format!("{}/canopus-{}", DEFAULT_ARTIFACTS_DIR, target);
+                let binary = format!("target/{target}/release/canopus");
+                let destination = format!("{DEFAULT_ARTIFACTS_DIR}/canopus-{target}");
                 shell.copy_file(&binary, &destination)?;
                 cmd!(shell, "chmod +x {destination}").run()?;
             }
@@ -98,7 +98,7 @@ fn compute_checksums(shell: &Shell) -> anyhow::Result<()> {
         .collect::<Vec<String>>()
         .join("\n");
 
-    let checksums_file = format!("{}/checksums.txt", DEFAULT_ARTIFACTS_DIR);
+    let checksums_file = format!("{DEFAULT_ARTIFACTS_DIR}/checksums.txt");
     shell.write_file(checksums_file, checksums)?;
     Ok(())
 }
@@ -114,7 +114,7 @@ fn evaluate_build_targets() -> anyhow::Result<Vec<String>> {
     let archs = vec!["x86_64", "aarch64"];
     let targets = archs
         .into_iter()
-        .map(|arch| format!("{}-{}", arch, platform))
+        .map(|arch| format!("{arch}-{platform}"))
         .collect::<Vec<_>>();
 
     Ok(targets)
