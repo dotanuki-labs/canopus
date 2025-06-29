@@ -1,7 +1,8 @@
 // Copyright 2025 Dotanuki Labs
 // SPDX-License-Identifier: MIT
 
-use crate::core::{CodeOwners, CodeOwnersEntry, DanglingGlobPattern, ValidationError};
+use crate::core::errors::{CodeownersValidationError, ValidationDiagnostic};
+use crate::core::models::{CodeOwners, CodeOwnersEntry};
 use anyhow::bail;
 use ignore::WalkBuilder;
 use std::path::{Path, PathBuf};
@@ -41,17 +42,19 @@ fn check_non_matching_glob_patterns(project_path: &Path, code_owners: &CodeOwner
     let dangling_globs = glob_matchers
         .iter()
         .filter(|(_, glob_matcher)| all_paths.iter().any(|path| !glob_matcher.is_match(path)))
-        .map(|(line, glob_matcher)| DanglingGlobPattern {
-            line_number: *line,
-            pattern: glob_matcher.glob().glob().to_string(),
+        .map(|(line, glob_matcher)| {
+            ValidationDiagnostic::new_dangling_glob_issue(
+                *line,
+                format!("{} does not match any project path", glob_matcher.glob().glob()).as_str(),
+            )
         })
         .collect::<Vec<_>>();
 
     if !dangling_globs.is_empty() {
         log::info!("Found patterns that won't match any existing project files");
-        bail!(ValidationError::DanglingGlobPatterns {
-            patterns: dangling_globs
-        })
+        bail!(CodeownersValidationError {
+            diagnostics: dangling_globs
+        });
     }
 
     Ok(())
