@@ -4,6 +4,7 @@
 use crate::core::errors::{CodeownersValidationError, ValidationDiagnostic};
 use anyhow::bail;
 use globset::Glob;
+use std::path::PathBuf;
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Owner {
@@ -208,5 +209,56 @@ impl TryFrom<&str> for CodeOwners {
         }
 
         Ok(CodeOwners { entries })
+    }
+}
+
+pub struct CodeOwnersFile {
+    pub path: PathBuf,
+    pub contents: String,
+}
+
+impl CodeOwnersFile {
+    fn check_conventional_codeowners_location(project_location: &PathBuf) -> anyhow::Result<PathBuf> {
+        log::info!("Project location : {project_location:?}");
+
+        let possible_locations = [
+            project_location.join(".github/CODEOWNERS"),
+            project_location.join("CODEOWNERS"),
+            project_location.join("docs/CODEOWNERS"),
+        ];
+
+        let config_files = possible_locations
+            .iter()
+            .filter(|path| path.exists())
+            .collect::<Vec<_>>();
+
+        if config_files.is_empty() {
+            bail!("no CODEOWNERS definition found in the project");
+        }
+
+        if config_files.len() > 1 {
+            bail!("found multiple definitions for CODEOWNERS");
+        }
+
+        let codeowners = config_files
+            .first()
+            .unwrap_or_else(|| panic!("FATAL: found the CODEOWNERS file cannot construct a path to it"));
+
+        Ok(codeowners.to_path_buf())
+    }
+}
+
+impl TryFrom<PathBuf> for CodeOwnersFile {
+    type Error = anyhow::Error;
+
+    fn try_from(value: PathBuf) -> anyhow::Result<Self> {
+        let codeowners_file = Self::check_conventional_codeowners_location(&value)?;
+        log::debug!("Codeowners config found at : {}", &codeowners_file.to_string_lossy());
+
+        let codeowners_content = std::fs::read_to_string(codeowners_file.as_path())?;
+        Ok(Self {
+            path: codeowners_file,
+            contents: codeowners_content,
+        })
     }
 }
