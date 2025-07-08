@@ -2,20 +2,16 @@
 // SPDX-License-Identifier: MIT
 
 use crate::core::errors::{CodeownersValidationError, ValidationDiagnostic};
-use crate::core::models::{CodeOwners, CodeOwnersEntry};
+use crate::core::models::{CodeOwners, CodeOwnersEntry, CodeOwnersFile};
 use anyhow::bail;
 use ignore::WalkBuilder;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
-pub fn validate_codeowners(project_location: &PathBuf) -> anyhow::Result<()> {
-    let codeowners_file = check_conventional_codeowners_location(project_location)?;
-    log::info!("Codeowners file found at : {}", codeowners_file.to_string_lossy());
-
-    let codeowners_content = std::fs::read_to_string(codeowners_file.as_path())?;
-    let codeowners = CodeOwners::try_from(codeowners_content.as_str())?;
+pub fn validate_codeowners(codeowners_file: CodeOwnersFile) -> anyhow::Result<()> {
+    let codeowners = CodeOwners::try_from(codeowners_file.contents.as_str())?;
     log::info!("Successfully validated syntax");
 
-    check_non_matching_glob_patterns(codeowners_file.as_path(), &codeowners)?;
+    check_non_matching_glob_patterns(&codeowners_file.path, &codeowners)?;
 
     log::info!("Successfully validated path patterns");
     Ok(())
@@ -58,33 +54,4 @@ fn check_non_matching_glob_patterns(project_path: &Path, code_owners: &CodeOwner
     }
 
     Ok(())
-}
-
-fn check_conventional_codeowners_location(project_location: &PathBuf) -> anyhow::Result<PathBuf> {
-    log::info!("Project location : {project_location:?}");
-
-    let possible_locations = [
-        project_location.join(".github/CODEOWNERS"),
-        project_location.join("CODEOWNERS"),
-        project_location.join("docs/CODEOWNERS"),
-    ];
-
-    let config_files = possible_locations
-        .iter()
-        .filter(|path| path.exists())
-        .collect::<Vec<_>>();
-
-    if config_files.is_empty() {
-        bail!("no CODEOWNERS definition found in the project");
-    }
-
-    if config_files.len() > 1 {
-        bail!("found multiple definitions for CODEOWNERS");
-    }
-
-    let codeowners = config_files
-        .first()
-        .unwrap_or_else(|| panic!("FATAL: found the CODEOWNERS file cannot construct a path to it"));
-
-    Ok(codeowners.to_path_buf())
 }

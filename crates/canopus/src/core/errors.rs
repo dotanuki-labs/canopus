@@ -3,7 +3,7 @@
 
 use std::fmt::{Display, Formatter};
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum ValidationDiagnosticKind {
     Syntax,
     DanglingGlobPattern,
@@ -18,7 +18,7 @@ impl Display for ValidationDiagnosticKind {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub struct ValidationDiagnostic {
     pub line: usize,
     pub context: String,
@@ -67,7 +67,7 @@ impl From<CodeownersValidationError> for Vec<ValidationDiagnostic> {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub struct CodeownersValidationError {
     pub diagnostics: Vec<ValidationDiagnostic>,
 }
