@@ -1,6 +1,7 @@
 // Copyright 2025 Dotanuki Labs
 // SPDX-License-Identifier: MIT
 
+mod filesystem;
 mod validation;
 
 use crate::core::models::CodeOwnersFile;
@@ -25,7 +26,8 @@ pub fn execute(requested: RequestedFeature) -> anyhow::Result<()> {
     match requested {
         RequestedFeature::ValidateCodeowners(project_path) => {
             let codeowners_file = CodeOwnersFile::try_from(project_path.clone())?;
-            validation::validate_codeowners(codeowners_file)
+            let path_walker = filesystem::GitAwarePathWalker::new(codeowners_file.path.clone());
+            validation::validate_codeowners(codeowners_file, path_walker)
         },
     }
 }
@@ -34,7 +36,7 @@ pub fn execute(requested: RequestedFeature) -> anyhow::Result<()> {
 mod tests {
     use crate::core::errors::{CodeownersValidationError, ValidationDiagnostic};
     use crate::core::models::CodeOwnersFile;
-    use crate::features::validation;
+    use crate::features::{filesystem, validation};
     use assertor::{EqualityAssertion, ResultAssertion};
     use indoc::indoc;
     use std::path::PathBuf;
@@ -50,7 +52,8 @@ mod tests {
             contents: entries.to_string(),
         };
 
-        let validation = validation::validate_codeowners(codeowners_file);
+        let path_walker = filesystem::helpers::FakePathWalker::no_op();
+        let validation = validation::validate_codeowners(codeowners_file, path_walker);
 
         assertor::assert_that!(validation).is_ok();
     }
@@ -66,7 +69,8 @@ mod tests {
             contents: entries.to_string(),
         };
 
-        let validation = validation::validate_codeowners(codeowners_file);
+        let path_walker = filesystem::helpers::FakePathWalker::no_op();
+        let validation = validation::validate_codeowners(codeowners_file, path_walker);
 
         let expected = CodeownersValidationError {
             diagnostics: vec![ValidationDiagnostic::new_syntax_issue(0, "cannot parse owner")],

@@ -3,21 +3,21 @@
 
 use crate::core::errors::{CodeownersValidationError, ValidationDiagnostic};
 use crate::core::models::{CodeOwners, CodeOwnersEntry, CodeOwnersFile};
+use crate::features::filesystem::PathWalker;
 use anyhow::bail;
-use ignore::WalkBuilder;
-use std::path::Path;
+use std::path::PathBuf;
 
-pub fn validate_codeowners(codeowners_file: CodeOwnersFile) -> anyhow::Result<()> {
+pub fn validate_codeowners(codeowners_file: CodeOwnersFile, path_walker: impl PathWalker) -> anyhow::Result<()> {
     let codeowners = CodeOwners::try_from(codeowners_file.contents.as_str())?;
     log::info!("Successfully validated syntax");
 
-    check_non_matching_glob_patterns(&codeowners_file.path, &codeowners)?;
-
+    let paths = path_walker.walk();
+    check_non_matching_glob_patterns(&codeowners, &paths)?;
     log::info!("Successfully validated path patterns");
     Ok(())
 }
 
-fn check_non_matching_glob_patterns(project_path: &Path, code_owners: &CodeOwners) -> anyhow::Result<()> {
+fn check_non_matching_glob_patterns(code_owners: &CodeOwners, paths: &[PathBuf]) -> anyhow::Result<()> {
     let glob_matchers = code_owners
         .entries
         .iter()
@@ -28,16 +28,9 @@ fn check_non_matching_glob_patterns(project_path: &Path, code_owners: &CodeOwner
         .map(|(line, glob)| (line, glob.compile_matcher()))
         .collect::<Vec<_>>();
 
-    let walker = WalkBuilder::new(project_path).build();
-
-    let all_paths = walker
-        .filter_map(|entry| entry.ok())
-        .map(|entry| entry.path().to_path_buf())
-        .collect::<Vec<_>>();
-
     let dangling_globs = glob_matchers
         .iter()
-        .filter(|(_, glob_matcher)| all_paths.iter().any(|path| !glob_matcher.is_match(path)))
+        .filter(|(_, glob_matcher)| paths.iter().any(|path| !glob_matcher.is_match(path)))
         .map(|(line, glob_matcher)| {
             ValidationDiagnostic::new_dangling_glob_issue(
                 *line,
