@@ -33,16 +33,17 @@ pub fn execute(requested: RequestedFeature) -> anyhow::Result<()> {
 }
 
 #[cfg(test)]
-mod tests {
+mod validation_tests {
     use crate::core::errors::{CodeownersValidationError, ValidationDiagnostic};
     use crate::core::models::CodeOwnersFile;
-    use crate::features::{filesystem, validation};
+    use crate::features::filesystem::helpers::FakePathWalker;
+    use crate::features::validation;
     use assertor::{EqualityAssertion, ResultAssertion};
     use indoc::indoc;
     use std::path::PathBuf;
 
     #[test]
-    fn should_find_no_issues() {
+    fn should_find_no_syntax_issues() {
         let entries = indoc! {"
             *.rs    @org/rustaceans
         "};
@@ -52,14 +53,13 @@ mod tests {
             contents: entries.to_string(),
         };
 
-        let path_walker = filesystem::helpers::FakePathWalker::no_op();
-        let validation = validation::validate_codeowners(codeowners_file, path_walker);
+        let validation = validation::validate_codeowners(codeowners_file, FakePathWalker::no_op());
 
         assertor::assert_that!(validation).is_ok();
     }
 
     #[test]
-    fn should_detect_invalid_owners() {
+    fn should_detect_owners_syntax_issue() {
         let entries = indoc! {"
             *.rs    org/rustaceans
         "};
@@ -69,13 +69,55 @@ mod tests {
             contents: entries.to_string(),
         };
 
-        let path_walker = filesystem::helpers::FakePathWalker::no_op();
-        let validation = validation::validate_codeowners(codeowners_file, path_walker);
+        let validation = validation::validate_codeowners(codeowners_file, FakePathWalker::no_op());
 
         let expected = CodeownersValidationError {
             diagnostics: vec![ValidationDiagnostic::new_syntax_issue(0, "cannot parse owner")],
         };
 
-        assertor::assert_that!(validation.unwrap_err().downcast_ref()).is_equal_to(Some(&expected));
+        assertor::assert_that!(validation.into()).is_equal_to(expected);
+    }
+
+    #[test]
+    fn should_detect_glob_syntax_issue() {
+        let entries = indoc! {"
+            [z-a]*.rs    @org/crabbers
+        "};
+
+        let codeowners_file = CodeOwnersFile {
+            path: PathBuf::from("path/to/.github/CODEOWNERS"),
+            contents: entries.to_string(),
+        };
+
+        let validation = validation::validate_codeowners(codeowners_file, FakePathWalker::no_op());
+
+        let expected = CodeownersValidationError {
+            diagnostics: vec![ValidationDiagnostic::new_syntax_issue(0, "invalid glob pattern")],
+        };
+
+        assertor::assert_that!(validation.into()).is_equal_to(expected);
+    }
+
+    #[test]
+    fn should_report_multiple_validation_issues_for_the_same_entry() {
+        let entries = indoc! {"
+            [z-a]*.rs    org/crabbers
+        "};
+
+        let codeowners_file = CodeOwnersFile {
+            path: PathBuf::from("path/to/.github/CODEOWNERS"),
+            contents: entries.to_string(),
+        };
+
+        let validation = validation::validate_codeowners(codeowners_file, FakePathWalker::no_op());
+
+        let expected = CodeownersValidationError {
+            diagnostics: vec![
+                ValidationDiagnostic::new_syntax_issue(0, "invalid glob pattern"),
+                ValidationDiagnostic::new_syntax_issue(0, "cannot parse owner"),
+            ],
+        };
+
+        assertor::assert_that!(validation.into()).is_equal_to(expected);
     }
 }

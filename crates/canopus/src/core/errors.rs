@@ -87,3 +87,9 @@ impl Display for CodeownersValidationError {
 impl std::error::Error for CodeownersValidationError {
     // Already satisfied
 }
+
+impl From<anyhow::Result<()>> for CodeownersValidationError {
+    fn from(value: anyhow::Result<()>) -> Self {
+        value.expect_err("expecting an error").downcast().unwrap()
+    }
+}
