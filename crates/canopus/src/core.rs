@@ -63,7 +63,7 @@ mod tests {
             *.rs    @org/rustaceans   # Enforce global control
         "};
 
-        let codeowners = CodeOwners::try_from(codeowners_rules).unwrap();
+        let codeowners = CodeOwners::try_from(codeowners_rules)?;
 
         let expected = CodeOwners {
             entries: vec![CodeOwnersEntry::try_new_commented_rule(
