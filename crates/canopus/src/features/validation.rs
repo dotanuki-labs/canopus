@@ -5,6 +5,7 @@ use crate::core::errors::{CodeownersValidationError, ValidationDiagnostic};
 use crate::core::models::{CodeOwners, CodeOwnersEntry, CodeOwnersFile};
 use crate::features::filesystem::PathWalker;
 use anyhow::bail;
+use itertools::Itertools;
 use std::path::PathBuf;
 
 pub fn validate_codeowners(codeowners_file: CodeOwnersFile, path_walker: impl PathWalker) -> anyhow::Result<()> {
@@ -13,7 +14,50 @@ pub fn validate_codeowners(codeowners_file: CodeOwnersFile, path_walker: impl Pa
 
     let paths = path_walker.walk();
     check_non_matching_glob_patterns(&codeowners, &paths)?;
+    log::info!("Dangling glob patterns : not found");
+
+    check_duplicated_owners(&codeowners)?;
+    log::info!("Duplicated code owners : not found");
+
     log::info!("Successfully validated path patterns");
+    Ok(())
+}
+
+fn check_duplicated_owners(code_owners: &CodeOwners) -> anyhow::Result<()> {
+    let ownerships = &code_owners
+        .entries
+        .iter()
+        .filter_map(|entry| match entry {
+            CodeOwnersEntry::Rule(ownership) => Some(ownership),
+            _ => None,
+        })
+        .sorted_by_key(|rule| rule.glob.glob())
+        .collect::<Vec<_>>();
+
+    let mut multiple_owners = Vec::new();
+
+    for (glob, grouped) in &ownerships.iter().chunk_by(|o1| o1.glob.glob()) {
+        let lines = grouped.into_iter().map(|rule| rule.line_number + 1).collect::<Vec<_>>();
+
+        if lines.len() > 1 {
+            multiple_owners.push((glob.to_string(), lines));
+        }
+    }
+
+    if !multiple_owners.is_empty() {
+        let diagnostics = multiple_owners
+            .iter()
+            .map(|(glob, lines)| {
+                let message = format!("{} defined multiple times : lines {:?}", glob, lines);
+                ValidationDiagnostic::new_duplicated_ownership(lines[0], &message)
+            })
+            .collect::<Vec<_>>();
+
+        log::info!("Found some duplicated ownership rules");
+
+        bail!(CodeownersValidationError { diagnostics });
+    }
+
     Ok(())
 }
 

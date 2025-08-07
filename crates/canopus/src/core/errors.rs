@@ -7,6 +7,7 @@ use std::fmt::{Display, Formatter};
 pub enum ValidationDiagnosticKind {
     Syntax,
     DanglingGlobPattern,
+    DuplicateOwnership,
 }
 
 impl Display for ValidationDiagnosticKind {
@@ -14,6 +15,7 @@ impl Display for ValidationDiagnosticKind {
         match self {
             ValidationDiagnosticKind::Syntax => write!(f, "codeowners-syntax"),
             ValidationDiagnosticKind::DanglingGlobPattern => write!(f, "dangling-glob-pattern"),
+            ValidationDiagnosticKind::DuplicateOwnership => write!(f, "duplicated-ownership"),
         }
     }
 }
@@ -39,6 +41,14 @@ impl ValidationDiagnostic {
             line: line + 1,
             context: context.to_string(),
             kind: ValidationDiagnosticKind::DanglingGlobPattern,
+        }
+    }
+
+    pub fn new_duplicated_ownership(line: usize, context: &str) -> Self {
+        Self {
+            line: line + 1,
+            context: context.to_string(),
+            kind: ValidationDiagnosticKind::DuplicateOwnership,
         }
     }
 }
