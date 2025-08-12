@@ -19,7 +19,7 @@ categories = ["command-line-utilities"]
 canopus = { path = "crates/canopus" }
 xtasks = { path = "crates/xtasks" }
 
-anyhow = "=1.0.98"
+anyhow = "=1.0.99"
 assertor = "=0.0.4"
 assert_cmd = "=2.0.17"
 better-panic = "=0.3.0"
