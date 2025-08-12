@@ -172,13 +172,13 @@ impl TryFrom<(usize, &str)> for CodeOwnersEntry {
 
             let glob = glob_pattern.unwrap();
 
-            return if inline_comment_detected {
+            if inline_comment_detected {
                 let inline_comment = inline_comments.join(" ");
                 CodeOwnersEntry::try_new_commented_rule(line_number, glob, owners, &inline_comment)
                     .map_err(|e| e.into())
             } else {
                 CodeOwnersEntry::try_new_rule(line_number, glob, owners).map_err(|e| e.into())
-            };
+            }
         }
     }
 }
