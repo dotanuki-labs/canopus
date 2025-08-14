@@ -135,9 +135,7 @@ mod validation_tests {
             .description("cannot parse owner")
             .build();
 
-        let expected = CodeownersValidationError {
-            diagnostics: vec![invalid_glob, invalid_owner],
-        };
+        let expected = CodeownersValidationError::with(vec![invalid_glob, invalid_owner]);
 
         assertor::assert_that!(validation.into()).is_equal_to(expected);
     }
@@ -223,21 +221,19 @@ mod validation_tests {
 
         let validation = validation::validate_codeowners(codeowners_file, path_walker);
 
+        let dangling_glob = ValidationDiagnostic::builder()
+            .kind(DiagnosticKind::DanglingGlobPattern)
+            .line_number(1)
+            .description("docs/ does not match any project path")
+            .build();
+
         let duplicated_ownership = ValidationDiagnostic::builder()
             .kind(DiagnosticKind::DuplicateOwnership)
             .line_number(0)
             .description("*.rs defined multiple times : lines [0, 2]")
             .build();
 
-        let dangling_globs = ValidationDiagnostic::builder()
-            .kind(DiagnosticKind::DanglingGlobPattern)
-            .line_number(1)
-            .description("docs/ does not match any project path")
-            .build();
-
-        let expected = CodeownersValidationError {
-            diagnostics: vec![dangling_globs, duplicated_ownership],
-        };
+        let expected = CodeownersValidationError::with(vec![dangling_glob, duplicated_ownership]);
         assertor::assert_that!(validation.into()).is_equal_to(expected);
     }
 }

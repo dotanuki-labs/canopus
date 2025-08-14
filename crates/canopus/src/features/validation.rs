@@ -4,7 +4,7 @@
 use crate::core::errors::{CodeownersValidationError, DiagnosticKind, ValidationDiagnostic};
 use crate::core::models::{CodeOwners, CodeOwnersEntry, CodeOwnersFile};
 use crate::features::filesystem::PathWalker;
-use anyhow::{anyhow, bail};
+use anyhow::bail;
 use itertools::Itertools;
 use std::collections::HashSet;
 use std::path::PathBuf;
@@ -22,14 +22,14 @@ pub fn validate_codeowners(codeowners_file: CodeOwnersFile, path_walker: impl Pa
         return Ok(());
     }
 
-    let errors = validations
+    let diagnostics = validations
         .into_iter()
         .filter_map(|check| check.err())
         .flat_map(|error| error.downcast::<CodeownersValidationError>())
         .flat_map(|raised| raised.diagnostics)
         .collect_vec();
 
-    bail!(anyhow!(CodeownersValidationError { diagnostics: errors }))
+    bail!(CodeownersValidationError::with(diagnostics))
 }
 
 fn check_duplicated_owners(code_owners: &CodeOwners) -> anyhow::Result<()> {
@@ -41,12 +41,12 @@ fn check_duplicated_owners(code_owners: &CodeOwners) -> anyhow::Result<()> {
             _ => None,
         })
         .sorted_by_key(|rule| rule.glob.glob())
-        .collect::<Vec<_>>();
+        .collect_vec();
 
     let mut grouped_per_glob = Vec::new();
 
-    for (glob, grouped) in &ownerships.iter().chunk_by(|o1| o1.glob.glob()) {
-        let lines = grouped.into_iter().map(|rule| rule.line_number).collect::<Vec<_>>();
+    for (glob, grouped) in &ownerships.iter().chunk_by(|rule| rule.glob.glob()) {
+        let lines = grouped.into_iter().map(|rule| rule.line_number).collect_vec();
 
         if lines.len() > 1 {
             grouped_per_glob.push((glob.to_string(), lines));
@@ -63,11 +63,11 @@ fn check_duplicated_owners(code_owners: &CodeOwners) -> anyhow::Result<()> {
                     .message(format!("{} defined multiple times : lines {:?}", glob, lines))
                     .build()
             })
-            .collect::<Vec<_>>();
+            .collect_vec();
 
         log::info!("Found some duplicated ownership rules");
 
-        bail!(CodeownersValidationError { diagnostics });
+        bail!(CodeownersValidationError::with(diagnostics))
     }
 
     log::info!("Duplicated code owners : not found");
@@ -75,41 +75,41 @@ fn check_duplicated_owners(code_owners: &CodeOwners) -> anyhow::Result<()> {
 }
 
 fn check_non_matching_glob_patterns(code_owners: &CodeOwners, paths: &[PathBuf]) -> anyhow::Result<()> {
-    let lines_and_globs = code_owners
+    let lines_and_glob_matchers = code_owners
         .entries
         .iter()
         .filter_map(|entry| match entry {
-            CodeOwnersEntry::Rule(rule) => Some((rule.line_number, &rule.glob)),
+            CodeOwnersEntry::Rule(rule) => Some((rule.line_number, rule.glob.compile_matcher())),
             _ => None,
         })
-        .collect::<Vec<_>>();
+        .collect_vec();
 
-    let matching_globs = lines_and_globs
+    let matching_globs = lines_and_glob_matchers
         .iter()
-        .filter_map(|(_, glob)| {
-            if paths.iter().any(|path| glob.compile_matcher().is_match(path)) {
-                Some(glob)
+        .filter_map(|(_, glob_matcher)| {
+            if paths.iter().any(|path| glob_matcher.is_match(path)) {
+                Some(glob_matcher.glob().clone())
             } else {
                 None
             }
         })
         .collect::<HashSet<_>>();
 
-    let diagnostics = lines_and_globs
+    let diagnostics = lines_and_glob_matchers
         .iter()
-        .filter(|(_, glob)| !matching_globs.contains(glob))
-        .map(|(line, glob)| {
+        .filter(|(_, glob_matcher)| !matching_globs.contains(glob_matcher.glob()))
+        .map(|(line, glob_matcher)| {
             ValidationDiagnostic::builder()
                 .kind(DiagnosticKind::DanglingGlobPattern)
                 .line_number(*line)
-                .message(format!("{} does not match any project path", glob.glob()))
+                .message(format!("{} does not match any project path", glob_matcher.glob()))
                 .build()
         })
         .collect_vec();
 
     if !diagnostics.is_empty() {
         log::info!("Found patterns that won't match any existing project files");
-        bail!(CodeownersValidationError { diagnostics });
+        bail!(CodeownersValidationError::with(diagnostics))
     }
 
     log::info!("Dangling glob patterns : not found");
