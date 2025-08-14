@@ -99,7 +99,7 @@ mod validation_tests {
     }
 
     #[test]
-    fn should_report_multiple_validation_issues_for_the_same_entry() {
+    fn should_report_multiple_issues_for_the_same_entry() {
         let entries = indoc! {"
             [z-a]*.rs    org/crabbers
         "};
@@ -116,6 +116,31 @@ mod validation_tests {
                 ValidationDiagnostic::new_syntax_issue(0, "invalid glob pattern"),
                 ValidationDiagnostic::new_syntax_issue(0, "cannot parse owner"),
             ],
+        };
+
+        assertor::assert_that!(validation.into()).is_equal_to(expected);
+    }
+
+    #[test]
+    fn should_detect_strictly_duplicated_ownership_rules() {
+        let entries = indoc! {"
+            *.rs    @org/rustaceans
+            .github @org/devops
+            *.rs    @org/rustaceans
+        "};
+
+        let codeowners_file = CodeOwnersFile {
+            path: PathBuf::from("path/to/.github/CODEOWNERS"),
+            contents: entries.to_string(),
+        };
+
+        let validation = validation::validate_codeowners(codeowners_file, FakePathWalker::no_op());
+
+        let expected = CodeownersValidationError {
+            diagnostics: vec![ValidationDiagnostic::new_duplicated_ownership(
+                1,
+                "*.rs defined multiple times : lines [1, 3]",
+            )],
         };
 
         assertor::assert_that!(validation.into()).is_equal_to(expected);

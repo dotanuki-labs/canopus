@@ -6,7 +6,7 @@ use anyhow::bail;
 use globset::Glob;
 use std::path::PathBuf;
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum Owner {
     GithubUser(String),
     GithubTeam(String),
@@ -34,7 +34,7 @@ impl TryFrom<(usize, &str)> for Owner {
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Eq, Hash)]
 pub struct Ownership {
     pub line_number: usize,
     pub glob: Glob,
