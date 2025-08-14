@@ -53,7 +53,11 @@ mod validation_tests {
             contents: entries.to_string(),
         };
 
-        let validation = validation::validate_codeowners(codeowners_file, FakePathWalker::no_op());
+        let project_paths = ["main.rs"];
+
+        let path_walker = FakePathWalker::new(&project_paths);
+
+        let validation = validation::validate_codeowners(codeowners_file, path_walker);
 
         assertor::assert_that!(validation).is_ok();
     }
@@ -69,7 +73,7 @@ mod validation_tests {
             contents: entries.to_string(),
         };
 
-        let validation = validation::validate_codeowners(codeowners_file, FakePathWalker::no_op());
+        let validation = validation::validate_codeowners(codeowners_file, FakePathWalker::no_walking());
 
         let issue = ValidationDiagnostic::builder()
             .kind(DiagnosticKind::InvalidSyntax)
@@ -93,7 +97,7 @@ mod validation_tests {
             contents: entries.to_string(),
         };
 
-        let validation = validation::validate_codeowners(codeowners_file, FakePathWalker::no_op());
+        let validation = validation::validate_codeowners(codeowners_file, FakePathWalker::no_walking());
 
         let issue = ValidationDiagnostic::builder()
             .kind(DiagnosticKind::InvalidSyntax)
@@ -117,7 +121,7 @@ mod validation_tests {
             contents: entries.to_string(),
         };
 
-        let validation = validation::validate_codeowners(codeowners_file, FakePathWalker::no_op());
+        let validation = validation::validate_codeowners(codeowners_file, FakePathWalker::no_walking());
 
         let invalid_glob = ValidationDiagnostic::builder()
             .kind(DiagnosticKind::InvalidSyntax)
@@ -139,10 +143,71 @@ mod validation_tests {
     }
 
     #[test]
+    fn should_detect_dangling_globs() {
+        let entries = indoc! {"
+            *.rs            @org/rustaceans
+            .automation/    @org/infra
+        "};
+
+        let codeowners_file = CodeOwnersFile {
+            path: PathBuf::from("path/to/.github/CODEOWNERS"),
+            contents: entries.to_string(),
+        };
+
+        let project_paths = [
+            // Already present as a project file
+            "validation.rs",
+        ];
+
+        let path_walker = FakePathWalker::new(&project_paths);
+
+        let validation = validation::validate_codeowners(codeowners_file, path_walker);
+
+        let issue = ValidationDiagnostic::builder()
+            .kind(DiagnosticKind::DanglingGlobPattern)
+            .line_number(1)
+            .description(".automation/ does not match any project path")
+            .build();
+
+        let expected = CodeownersValidationError::from(issue);
+
+        assertor::assert_that!(validation.into()).is_equal_to(expected);
+    }
+
+    #[test]
     fn should_detect_strictly_duplicated_ownership_rules() {
         let entries = indoc! {"
+            *.rs     @org/rustaceans
+            docs/    @org/rustaceans
+            *.rs     @org/crabbers @ubiratansoares
+        "};
+
+        let codeowners_file = CodeOwnersFile {
+            path: PathBuf::from("path/to/.github/CODEOWNERS"),
+            contents: entries.to_string(),
+        };
+
+        let project_paths = ["validation.rs", "docs/", "docs/README.md"];
+
+        let path_walker = FakePathWalker::new(&project_paths);
+
+        let validation = validation::validate_codeowners(codeowners_file, path_walker);
+
+        let duplicated_ownership = ValidationDiagnostic::builder()
+            .kind(DiagnosticKind::DuplicateOwnership)
+            .line_number(0)
+            .description("*.rs defined multiple times : lines [0, 2]")
+            .build();
+
+        let expected = CodeownersValidationError::from(duplicated_ownership);
+
+        assertor::assert_that!(validation.into()).is_equal_to(expected);
+    }
+
+    #[test]
+    fn should_detect_multiple_non_syntax_issues() {
+        let entries = indoc! {"
             *.rs        @org/rustaceans
-            .github/    @org/infra
             docs/       @org/devs
             *.rs        @org/crabbers @ubiratansoares
         "};
@@ -152,16 +217,27 @@ mod validation_tests {
             contents: entries.to_string(),
         };
 
-        let validation = validation::validate_codeowners(codeowners_file, FakePathWalker::no_op());
+        let project_paths = ["validation.rs", ".github/", ".github/CODEOWNERS"];
 
-        let issue = ValidationDiagnostic::builder()
+        let path_walker = FakePathWalker::new(&project_paths);
+
+        let validation = validation::validate_codeowners(codeowners_file, path_walker);
+
+        let duplicated_ownership = ValidationDiagnostic::builder()
             .kind(DiagnosticKind::DuplicateOwnership)
             .line_number(0)
-            .description("*.rs defined multiple times : lines [0, 3]")
+            .description("*.rs defined multiple times : lines [0, 2]")
             .build();
 
-        let expected = CodeownersValidationError::from(issue);
+        let dangling_globs = ValidationDiagnostic::builder()
+            .kind(DiagnosticKind::DanglingGlobPattern)
+            .line_number(1)
+            .description("docs/ does not match any project path")
+            .build();
 
+        let expected = CodeownersValidationError {
+            diagnostics: vec![dangling_globs, duplicated_ownership],
+        };
         assertor::assert_that!(validation.into()).is_equal_to(expected);
     }
 }
