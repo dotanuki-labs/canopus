@@ -38,7 +38,7 @@ pub mod helpers {
     }
 
     impl FakePathWalker {
-        pub fn no_op() -> Self {
+        pub fn no_walking() -> Self {
             Self::new(&[])
         }
 
