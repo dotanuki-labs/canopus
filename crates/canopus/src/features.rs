@@ -34,7 +34,7 @@ pub fn execute(requested: RequestedFeature) -> anyhow::Result<()> {
 
 #[cfg(test)]
 mod validation_tests {
-    use crate::core::errors::{CodeownersValidationError, ValidationDiagnostic};
+    use crate::core::errors::{CodeownersValidationError, DiagnosticKind, ValidationDiagnostic};
     use crate::core::models::CodeOwnersFile;
     use crate::features::filesystem::helpers::FakePathWalker;
     use crate::features::validation;
@@ -71,9 +71,13 @@ mod validation_tests {
 
         let validation = validation::validate_codeowners(codeowners_file, FakePathWalker::no_op());
 
-        let expected = CodeownersValidationError {
-            diagnostics: vec![ValidationDiagnostic::new_syntax_issue(0, "cannot parse owner")],
-        };
+        let issue = ValidationDiagnostic::builder()
+            .kind(DiagnosticKind::InvalidSyntax)
+            .line_number(0)
+            .description("cannot parse owner")
+            .build();
+
+        let expected = CodeownersValidationError::from(issue);
 
         assertor::assert_that!(validation.into()).is_equal_to(expected);
     }
@@ -91,9 +95,13 @@ mod validation_tests {
 
         let validation = validation::validate_codeowners(codeowners_file, FakePathWalker::no_op());
 
-        let expected = CodeownersValidationError {
-            diagnostics: vec![ValidationDiagnostic::new_syntax_issue(0, "invalid glob pattern")],
-        };
+        let issue = ValidationDiagnostic::builder()
+            .kind(DiagnosticKind::InvalidSyntax)
+            .line_number(0)
+            .description("invalid glob pattern")
+            .build();
+
+        let expected = CodeownersValidationError::from(issue);
 
         assertor::assert_that!(validation.into()).is_equal_to(expected);
     }
@@ -111,11 +119,20 @@ mod validation_tests {
 
         let validation = validation::validate_codeowners(codeowners_file, FakePathWalker::no_op());
 
+        let invalid_glob = ValidationDiagnostic::builder()
+            .kind(DiagnosticKind::InvalidSyntax)
+            .line_number(0)
+            .description("invalid glob pattern")
+            .build();
+
+        let invalid_owner = ValidationDiagnostic::builder()
+            .kind(DiagnosticKind::InvalidSyntax)
+            .line_number(0)
+            .description("cannot parse owner")
+            .build();
+
         let expected = CodeownersValidationError {
-            diagnostics: vec![
-                ValidationDiagnostic::new_syntax_issue(0, "invalid glob pattern"),
-                ValidationDiagnostic::new_syntax_issue(0, "cannot parse owner"),
-            ],
+            diagnostics: vec![invalid_glob, invalid_owner],
         };
 
         assertor::assert_that!(validation.into()).is_equal_to(expected);
@@ -124,9 +141,10 @@ mod validation_tests {
     #[test]
     fn should_detect_strictly_duplicated_ownership_rules() {
         let entries = indoc! {"
-            *.rs    @org/rustaceans
-            .github @org/devops
-            *.rs    @org/rustaceans
+            *.rs        @org/rustaceans
+            .github/    @org/infra
+            docs/       @org/devs
+            *.rs        @org/crabbers @ubiratansoares
         "};
 
         let codeowners_file = CodeOwnersFile {
@@ -136,12 +154,13 @@ mod validation_tests {
 
         let validation = validation::validate_codeowners(codeowners_file, FakePathWalker::no_op());
 
-        let expected = CodeownersValidationError {
-            diagnostics: vec![ValidationDiagnostic::new_duplicated_ownership(
-                1,
-                "*.rs defined multiple times : lines [1, 3]",
-            )],
-        };
+        let issue = ValidationDiagnostic::builder()
+            .kind(DiagnosticKind::DuplicateOwnership)
+            .line_number(0)
+            .description("*.rs defined multiple times : lines [0, 3]")
+            .build();
+
+        let expected = CodeownersValidationError::from(issue);
 
         assertor::assert_that!(validation.into()).is_equal_to(expected);
     }

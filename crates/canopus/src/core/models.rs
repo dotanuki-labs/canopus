@@ -1,7 +1,7 @@
 // Copyright 2025 Dotanuki Labs
 // SPDX-License-Identifier: MIT
 
-use crate::core::errors::{CodeownersValidationError, ValidationDiagnostic};
+use crate::core::errors::{CodeownersValidationError, DiagnosticKind, ValidationDiagnostic};
 use anyhow::bail;
 use globset::Glob;
 use std::path::PathBuf;
@@ -30,7 +30,13 @@ impl TryFrom<(usize, &str)> for Owner {
             return Ok(Owner::EmailAddress(value.to_string()));
         };
 
-        bail!(ValidationDiagnostic::new_syntax_issue(line, "cannot parse owner"));
+        let diagnostic = ValidationDiagnostic::builder()
+            .kind(DiagnosticKind::InvalidSyntax)
+            .line_number(line)
+            .description("cannot parse owner")
+            .build();
+
+        bail!(diagnostic);
     }
 }
 
@@ -52,10 +58,13 @@ pub enum CodeOwnersEntry {
 impl CodeOwnersEntry {
     pub(crate) fn try_new_comment(line_number: usize, comment: &str) -> Result<Self, ValidationDiagnostic> {
         if comment.is_empty() {
-            return Err(ValidationDiagnostic::new_syntax_issue(
-                line_number,
-                "expected non-empty comment",
-            ));
+            let empty_comment = ValidationDiagnostic::builder()
+                .kind(DiagnosticKind::InvalidSyntax)
+                .line_number(line_number)
+                .description("expected non-empty comment")
+                .build();
+
+            return Err(empty_comment);
         };
 
         let sanitized = comment.replace("#", "").trim().to_string();
@@ -68,10 +77,13 @@ impl CodeOwnersEntry {
         owners: Vec<Owner>,
     ) -> Result<Self, ValidationDiagnostic> {
         if owners.is_empty() {
-            return Err(ValidationDiagnostic::new_syntax_issue(
-                line_number,
-                "expected non-empty owners list",
-            ));
+            let no_owners = ValidationDiagnostic::builder()
+                .kind(DiagnosticKind::InvalidSyntax)
+                .line_number(line_number)
+                .description("expected non-empty owners list")
+                .build();
+
+            return Err(no_owners);
         }
 
         let ownership = Ownership {
@@ -91,17 +103,23 @@ impl CodeOwnersEntry {
         comment: &str,
     ) -> Result<Self, ValidationDiagnostic> {
         if comment.is_empty() {
-            return Err(ValidationDiagnostic::new_syntax_issue(
-                line_number,
-                "expected non-empty comment",
-            ));
+            let empty_comment = ValidationDiagnostic::builder()
+                .kind(DiagnosticKind::InvalidSyntax)
+                .line_number(line_number)
+                .description("expected non-empty comment")
+                .build();
+
+            return Err(empty_comment);
         };
 
         if owners.is_empty() {
-            return Err(ValidationDiagnostic::new_syntax_issue(
-                line_number,
-                "expected non-empty owners list",
-            ));
+            let empty_owners_list = ValidationDiagnostic::builder()
+                .kind(DiagnosticKind::InvalidSyntax)
+                .line_number(line_number)
+                .description("expected non-empty owners list")
+                .build();
+
+            return Err(empty_owners_list);
         }
 
         let ownership = Ownership {
@@ -135,8 +153,13 @@ impl TryFrom<(usize, &str)> for CodeOwnersEntry {
             let glob_pattern = match Glob::new(raw_pattern) {
                 Ok(glob) => Some(glob),
                 Err(_) => {
-                    let issue = ValidationDiagnostic::new_syntax_issue(line_number, "invalid glob pattern");
-                    diagnostics.push(issue);
+                    let invalid_glob = ValidationDiagnostic::builder()
+                        .kind(DiagnosticKind::InvalidSyntax)
+                        .line_number(line_number)
+                        .description("invalid glob pattern")
+                        .build();
+
+                    diagnostics.push(invalid_glob);
                     None
                 },
             };
@@ -159,8 +182,13 @@ impl TryFrom<(usize, &str)> for CodeOwnersEntry {
                             owners.push(owner);
                         },
                         Err(_) => {
-                            let issue = ValidationDiagnostic::new_syntax_issue(line_number, "cannot parse owner");
-                            diagnostics.push(issue)
+                            let invalid_owner = ValidationDiagnostic::builder()
+                                .kind(DiagnosticKind::InvalidSyntax)
+                                .line_number(line_number)
+                                .description("cannot parse owner")
+                                .build();
+
+                            diagnostics.push(invalid_owner)
                         },
                     }
                 }

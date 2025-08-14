@@ -1,7 +1,7 @@
 // Copyright 2025 Dotanuki Labs
 // SPDX-License-Identifier: MIT
 
-use crate::core::errors::{CodeownersValidationError, ValidationDiagnostic};
+use crate::core::errors::{CodeownersValidationError, DiagnosticKind, ValidationDiagnostic};
 use crate::core::models::{CodeOwners, CodeOwnersEntry, CodeOwnersFile};
 use crate::features::filesystem::PathWalker;
 use anyhow::bail;
@@ -34,22 +34,25 @@ fn check_duplicated_owners(code_owners: &CodeOwners) -> anyhow::Result<()> {
         .sorted_by_key(|rule| rule.glob.glob())
         .collect::<Vec<_>>();
 
-    let mut multiple_owners = Vec::new();
+    let mut grouped_per_glob = Vec::new();
 
     for (glob, grouped) in &ownerships.iter().chunk_by(|o1| o1.glob.glob()) {
-        let lines = grouped.into_iter().map(|rule| rule.line_number + 1).collect::<Vec<_>>();
+        let lines = grouped.into_iter().map(|rule| rule.line_number).collect::<Vec<_>>();
 
         if lines.len() > 1 {
-            multiple_owners.push((glob.to_string(), lines));
+            grouped_per_glob.push((glob.to_string(), lines));
         }
     }
 
-    if !multiple_owners.is_empty() {
-        let diagnostics = multiple_owners
+    if !grouped_per_glob.is_empty() {
+        let diagnostics = grouped_per_glob
             .iter()
             .map(|(glob, lines)| {
-                let message = format!("{} defined multiple times : lines {:?}", glob, lines);
-                ValidationDiagnostic::new_duplicated_ownership(lines[0], &message)
+                ValidationDiagnostic::builder()
+                    .kind(DiagnosticKind::DuplicateOwnership)
+                    .line_number(lines[0])
+                    .message(format!("{} defined multiple times : lines {:?}", glob, lines))
+                    .build()
             })
             .collect::<Vec<_>>();
 
@@ -76,10 +79,14 @@ fn check_non_matching_glob_patterns(code_owners: &CodeOwners, paths: &[PathBuf])
         .iter()
         .filter(|(_, glob_matcher)| paths.iter().any(|path| !glob_matcher.is_match(path)))
         .map(|(line, glob_matcher)| {
-            ValidationDiagnostic::new_dangling_glob_issue(
-                *line,
-                format!("{} does not match any project path", glob_matcher.glob().glob()).as_str(),
-            )
+            ValidationDiagnostic::builder()
+                .kind(DiagnosticKind::DanglingGlobPattern)
+                .line_number(*line)
+                .message(format!(
+                    "{} does not match any project path",
+                    glob_matcher.glob().glob()
+                ))
+                .build()
         })
         .collect::<Vec<_>>();
 
