@@ -99,11 +99,9 @@ pub struct CodeownersValidationError {
     pub diagnostics: Vec<ValidationDiagnostic>,
 }
 
-impl From<&[ValidationDiagnostic]> for CodeownersValidationError {
-    fn from(value: &[ValidationDiagnostic]) -> Self {
-        CodeownersValidationError {
-            diagnostics: Vec::from(value),
-        }
+impl CodeownersValidationError {
+    pub fn with(diagnostics: Vec<ValidationDiagnostic>) -> Self {
+        Self { diagnostics }
     }
 }
 
