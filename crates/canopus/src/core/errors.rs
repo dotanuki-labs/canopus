@@ -3,53 +3,70 @@
 
 use std::fmt::{Display, Formatter};
 
-#[derive(Debug, PartialEq)]
-pub enum ValidationDiagnosticKind {
-    Syntax,
+#[derive(Clone, Debug, PartialEq)]
+pub enum DiagnosticKind {
+    InvalidSyntax,
     DanglingGlobPattern,
     DuplicateOwnership,
 }
 
-impl Display for ValidationDiagnosticKind {
+impl Display for DiagnosticKind {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
-            ValidationDiagnosticKind::Syntax => write!(f, "codeowners-syntax"),
-            ValidationDiagnosticKind::DanglingGlobPattern => write!(f, "dangling-glob-pattern"),
-            ValidationDiagnosticKind::DuplicateOwnership => write!(f, "duplicated-ownership"),
+            DiagnosticKind::InvalidSyntax => write!(f, "codeowners-syntax"),
+            DiagnosticKind::DanglingGlobPattern => write!(f, "dangling-glob-pattern"),
+            DiagnosticKind::DuplicateOwnership => write!(f, "duplicated-ownership"),
         }
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct ValidationDiagnostic {
-    pub line: usize,
-    pub context: String,
-    pub kind: ValidationDiagnosticKind,
+    kind: DiagnosticKind,
+    line: usize,
+    context: String,
+}
+
+#[derive(Default)]
+pub struct ValidationDiagnosticBuilder {
+    kind: Option<DiagnosticKind>,
+    line: Option<usize>,
+    context: Option<String>,
+}
+
+impl ValidationDiagnosticBuilder {
+    pub fn kind(mut self, kind: DiagnosticKind) -> Self {
+        self.kind = Some(kind);
+        self
+    }
+
+    pub fn line_number(mut self, line: usize) -> Self {
+        self.line = Some(line);
+        self
+    }
+
+    pub fn description(mut self, context: &str) -> Self {
+        self.context = Some(context.to_string());
+        self
+    }
+
+    pub fn message(mut self, context: String) -> Self {
+        self.context = Some(context);
+        self
+    }
+
+    pub fn build(self) -> ValidationDiagnostic {
+        ValidationDiagnostic {
+            kind: self.kind.expect("missing diagnostic kind"),
+            line: self.line.expect("missing related line in codeowners file"),
+            context: self.context.expect("missing context for this diagnostic"),
+        }
+    }
 }
 
 impl ValidationDiagnostic {
-    pub fn new_syntax_issue(line: usize, context: &str) -> Self {
-        Self {
-            line: line + 1,
-            context: context.to_string(),
-            kind: ValidationDiagnosticKind::Syntax,
-        }
-    }
-
-    pub fn new_dangling_glob_issue(line: usize, context: &str) -> Self {
-        Self {
-            line: line + 1,
-            context: context.to_string(),
-            kind: ValidationDiagnosticKind::DanglingGlobPattern,
-        }
-    }
-
-    pub fn new_duplicated_ownership(line: usize, context: &str) -> Self {
-        Self {
-            line: line + 1,
-            context: context.to_string(),
-            kind: ValidationDiagnosticKind::DuplicateOwnership,
-        }
+    pub fn builder() -> ValidationDiagnosticBuilder {
+        ValidationDiagnosticBuilder::default()
     }
 }
 
@@ -80,6 +97,14 @@ impl From<CodeownersValidationError> for Vec<ValidationDiagnostic> {
 #[derive(Debug, PartialEq)]
 pub struct CodeownersValidationError {
     pub diagnostics: Vec<ValidationDiagnostic>,
+}
+
+impl From<&[ValidationDiagnostic]> for CodeownersValidationError {
+    fn from(value: &[ValidationDiagnostic]) -> Self {
+        CodeownersValidationError {
+            diagnostics: Vec::from(value),
+        }
+    }
 }
 
 impl Display for CodeownersValidationError {
