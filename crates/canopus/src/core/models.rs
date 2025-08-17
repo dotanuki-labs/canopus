@@ -57,15 +57,7 @@ pub enum CodeOwnersEntry {
 
 impl CodeOwnersEntry {
     pub(crate) fn try_new_comment(line_number: usize, comment: &str) -> Result<Self, ValidationDiagnostic> {
-        if comment.is_empty() {
-            let empty_comment = ValidationDiagnostic::builder()
-                .kind(DiagnosticKind::InvalidSyntax)
-                .line_number(line_number)
-                .description("expected non-empty comment")
-                .build();
-
-            return Err(empty_comment);
-        };
+        Self::check_non_empty_comment(line_number, comment)?;
 
         let sanitized = comment.replace("#", "").trim().to_string();
         Ok(CodeOwnersEntry::Comment(sanitized))
@@ -76,15 +68,7 @@ impl CodeOwnersEntry {
         glob: Glob,
         owners: Vec<Owner>,
     ) -> Result<Self, ValidationDiagnostic> {
-        if owners.is_empty() {
-            let no_owners = ValidationDiagnostic::builder()
-                .kind(DiagnosticKind::InvalidSyntax)
-                .line_number(line_number)
-                .description("expected non-empty owners list")
-                .build();
-
-            return Err(no_owners);
-        }
+        Self::check_non_empty_owners_list(line_number, &owners)?;
 
         let ownership = Ownership {
             line_number,
@@ -102,6 +86,20 @@ impl CodeOwnersEntry {
         owners: Vec<Owner>,
         comment: &str,
     ) -> Result<Self, ValidationDiagnostic> {
+        Self::check_non_empty_comment(line_number, comment)?;
+        Self::check_non_empty_owners_list(line_number, &owners)?;
+
+        let ownership = Ownership {
+            line_number,
+            glob,
+            owners,
+            inline_comment: Some(comment.to_string()),
+        };
+
+        Ok(CodeOwnersEntry::Rule(ownership))
+    }
+
+    fn check_non_empty_comment(line_number: usize, comment: &str) -> Result<(), ValidationDiagnostic> {
         if comment.is_empty() {
             let empty_comment = ValidationDiagnostic::builder()
                 .kind(DiagnosticKind::InvalidSyntax)
@@ -112,6 +110,10 @@ impl CodeOwnersEntry {
             return Err(empty_comment);
         };
 
+        Ok(())
+    }
+
+    fn check_non_empty_owners_list(line_number: usize, owners: &[Owner]) -> Result<(), ValidationDiagnostic> {
         if owners.is_empty() {
             let empty_owners_list = ValidationDiagnostic::builder()
                 .kind(DiagnosticKind::InvalidSyntax)
@@ -122,14 +124,7 @@ impl CodeOwnersEntry {
             return Err(empty_owners_list);
         }
 
-        let ownership = Ownership {
-            line_number,
-            glob,
-            owners,
-            inline_comment: Some(comment.to_string()),
-        };
-
-        Ok(CodeOwnersEntry::Rule(ownership))
+        Ok(())
     }
 }
 
