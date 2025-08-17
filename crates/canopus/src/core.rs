@@ -6,7 +6,9 @@ pub mod models;
 
 #[cfg(test)]
 mod tests {
-    use crate::core::models::{CodeOwners, CodeOwnersEntry, Owner};
+    use crate::core::models::{
+        CodeOwners, CodeOwnersEntry, EmailHandle, GithubIdentityHandle, GithubTeamHandle, Owner,
+    };
     use assertor::{EqualityAssertion, ResultAssertion};
     use globset::Glob;
     use indoc::indoc;
@@ -14,7 +16,7 @@ mod tests {
     #[test]
     fn should_parse_trivial_codeowners() -> anyhow::Result<()> {
         let codeowners_rules = indoc! {"
-            *.rs    @org/rustaceans
+            *.rs    @dotanuki-labs/rustaceans
         "};
 
         let codeowners = CodeOwners::try_from(codeowners_rules)?;
@@ -23,7 +25,10 @@ mod tests {
             entries: vec![CodeOwnersEntry::try_new_rule(
                 0,
                 Glob::new("*.rs")?,
-                vec![Owner::try_from((0, "@org/rustaceans"))?],
+                vec![Owner::GithubTeam(GithubTeamHandle::new(
+                    GithubIdentityHandle::from("dotanuki-labs"),
+                    "rustaceans".to_string(),
+                ))],
             )?],
         };
 
@@ -36,7 +41,7 @@ mod tests {
         let codeowners_rules = indoc! {"
             # Rules for dotanuki labs
 
-            *.rs    @org/rustaceans
+            *.rs    @dotanuki-labs/rustaceans
         "};
 
         let codeowners = CodeOwners::try_from(codeowners_rules)?;
@@ -48,7 +53,10 @@ mod tests {
                 CodeOwnersEntry::try_new_rule(
                     2,
                     Glob::new("*.rs")?,
-                    vec![Owner::GithubTeam("org/rustaceans".to_string())],
+                    vec![Owner::GithubTeam(GithubTeamHandle::new(
+                        GithubIdentityHandle::from("dotanuki-labs"),
+                        "rustaceans".to_string(),
+                    ))],
                 )?,
             ],
         };
@@ -60,7 +68,7 @@ mod tests {
     #[test]
     fn should_parse_commented_rule() -> anyhow::Result<()> {
         let codeowners_rules = indoc! {"
-            *.rs    @org/rustaceans   # Enforce global control
+            *.rs    @dotanuki-labs/rustaceans   # Enforce global control
         "};
 
         let codeowners = CodeOwners::try_from(codeowners_rules)?;
@@ -69,7 +77,10 @@ mod tests {
             entries: vec![CodeOwnersEntry::try_new_commented_rule(
                 0,
                 Glob::new("*.rs")?,
-                vec![Owner::GithubTeam("org/rustaceans".to_string())],
+                vec![Owner::GithubTeam(GithubTeamHandle::new(
+                    GithubIdentityHandle::from("dotanuki-labs"),
+                    "rustaceans".to_string(),
+                ))],
                 "Enforce global control",
             )?],
         };
@@ -86,16 +97,16 @@ mod tests {
 
         let codeowners = CodeOwners::try_from(codeowners_rules)?;
 
-        let expected = CodeOwners {
-            entries: vec![CodeOwnersEntry::try_new_rule(
-                0,
-                Glob::new("*.rs")?,
-                vec![
-                    Owner::GithubUser("ubiratansoares".to_string()),
-                    Owner::EmailAddress("rust@dotanuki.dev".to_string()),
-                ],
-            )?],
-        };
+        let entry = CodeOwnersEntry::try_new_rule(
+            0,
+            Glob::new("*.rs")?,
+            vec![
+                Owner::GithubUser(GithubIdentityHandle::from("ubiratansoares")),
+                Owner::EmailAddress(EmailHandle::from("rust@dotanuki.dev")),
+            ],
+        )?;
+
+        let expected = CodeOwners { entries: vec![entry] };
 
         assertor::assert_that!(codeowners).is_equal_to(expected);
 
@@ -128,7 +139,7 @@ mod tests {
     #[test]
     fn should_fail_with_invalid_github_handle() {
         let codeowners_rules = indoc! {"
-            *.rs    @-ufs-
+            *.rs    @dotanuki--labs
         "};
 
         let parsing = CodeOwners::try_from(codeowners_rules);
