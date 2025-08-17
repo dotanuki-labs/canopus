@@ -20,6 +20,7 @@ globset.workspace = true
 ignore.workspace = true
 itertools.workspace = true
 human-panic.workspace = true
+lazy-regex.workspace = true
 log.workspace = true
 
 [dev-dependencies]

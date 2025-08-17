@@ -4,7 +4,10 @@
 use crate::core::errors::{CodeownersValidationError, DiagnosticKind, ValidationDiagnostic};
 use anyhow::bail;
 use globset::Glob;
+use lazy_regex::{Lazy, Regex};
 use std::path::PathBuf;
+
+static GITHUB_USERNAME_REGEX: &Lazy<Regex, fn() -> Regex> = lazy_regex::regex!(r#"^[a-zA-Z\d](-?[a-zA-Z\d]){0,38}$"#);
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum Owner {
@@ -13,30 +16,72 @@ pub enum Owner {
     EmailAddress(String),
 }
 
-impl TryFrom<(usize, &str)> for Owner {
-    type Error = anyhow::Error;
-
-    fn try_from((line, value): (usize, &str)) -> anyhow::Result<Self> {
-        if value.starts_with("@") {
-            let normalized = value.replacen("@", "", 1);
-            return if value.contains("/") {
-                Ok(Owner::GithubTeam(normalized))
-            } else {
-                Ok(Owner::GithubUser(normalized))
-            };
-        };
-
-        if email_address::EmailAddress::is_valid(value) {
-            return Ok(Owner::EmailAddress(value.to_string()));
+impl Owner {
+    fn try_from_email_address(line_number: usize, address: &str) -> anyhow::Result<Self> {
+        if email_address::EmailAddress::is_valid(address) {
+            return Ok(Owner::EmailAddress(address.to_string()));
         };
 
         let diagnostic = ValidationDiagnostic::builder()
             .kind(DiagnosticKind::InvalidSyntax)
-            .line_number(line)
-            .description("cannot parse owner")
+            .line_number(line_number)
+            .description("cannot parse owner from email address")
             .build();
 
         bail!(diagnostic);
+    }
+
+    fn try_github_username(line_number: usize, maybe_username: &str) -> anyhow::Result<Self> {
+        if GITHUB_USERNAME_REGEX.is_match(maybe_username) {
+            Ok(Owner::GithubUser(maybe_username.to_string()))
+        } else {
+            let diagnostic = ValidationDiagnostic::builder()
+                .kind(DiagnosticKind::InvalidSyntax)
+                .line_number(line_number)
+                .description("invalid github handle")
+                .build();
+
+            bail!(diagnostic);
+        }
+    }
+
+    fn try_from_github_identifier(line_number: usize, identifier: &str) -> anyhow::Result<Self> {
+        if identifier.starts_with("@") {
+            let normalized = identifier.replacen("@", "", 1);
+            return if identifier.contains("/") {
+                Ok(Owner::GithubTeam(normalized))
+            } else {
+                Self::try_github_username(line_number, &normalized)
+            };
+        };
+
+        let diagnostic = ValidationDiagnostic::builder()
+            .kind(DiagnosticKind::InvalidSyntax)
+            .line_number(line_number)
+            .description("cannot parse owner from potential github identifier")
+            .build();
+
+        bail!(diagnostic);
+    }
+}
+
+impl TryFrom<(usize, &str)> for Owner {
+    type Error = anyhow::Error;
+
+    fn try_from((line, value): (usize, &str)) -> anyhow::Result<Self> {
+        match value {
+            _ if value.starts_with("@") => Self::try_from_github_identifier(line, value),
+            _ if value.contains("@") => Self::try_from_email_address(line, value),
+            _ => {
+                let diagnostic = ValidationDiagnostic::builder()
+                    .kind(DiagnosticKind::InvalidSyntax)
+                    .line_number(line)
+                    .description("cannot parse owner")
+                    .build();
+
+                bail!(diagnostic);
+            },
+        }
     }
 }
 
