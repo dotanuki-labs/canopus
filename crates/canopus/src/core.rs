@@ -115,9 +115,20 @@ mod tests {
     }
 
     #[test]
-    fn should_fail_with_invalid_owner() {
+    fn should_fail_with_unparsable_owner() {
         let codeowners_rules = indoc! {"
             *.rs    ufs.dotanuki
+        "};
+
+        let parsing = CodeOwners::try_from(codeowners_rules);
+
+        assertor::assert_that!(parsing).is_err();
+    }
+
+    #[test]
+    fn should_fail_with_invalid_github_handle() {
+        let codeowners_rules = indoc! {"
+            *.rs    @-ufs-
         "};
 
         let parsing = CodeOwners::try_from(codeowners_rules);
