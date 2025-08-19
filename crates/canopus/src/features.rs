@@ -2,9 +2,11 @@
 // SPDX-License-Identifier: MIT
 
 mod filesystem;
+mod github;
 mod validation;
 
 use crate::core::models::CodeOwnersFile;
+use crate::features::github::GithubRestClient;
 use std::fmt::{Display, Formatter};
 use std::path::PathBuf;
 
@@ -27,17 +29,18 @@ pub fn execute(requested: RequestedFeature) -> anyhow::Result<()> {
         RequestedFeature::ValidateCodeowners(project_path) => {
             let codeowners_file = CodeOwnersFile::try_from(project_path.clone())?;
             let path_walker = filesystem::GitAwarePathWalker::new(codeowners_file.path.clone());
-            validation::validate_codeowners(codeowners_file, path_walker)
+            let github_client = GithubRestClient::new();
+            validation::validate_codeowners(codeowners_file, path_walker, github_client)
         },
     }
 }
 
 #[cfg(test)]
-mod validation_tests {
-    use crate::core::errors::{CodeownersValidationError, DiagnosticKind, ValidationDiagnostic};
+mod structural_validation_tests {
+    use crate::core::errors::{CodeownersValidationError, DiagnosticKind, StructuralIssue, ValidationDiagnostic};
     use crate::core::models::CodeOwnersFile;
     use crate::features::filesystem::helpers::FakePathWalker;
-    use crate::features::validation;
+    use crate::features::{github, validation};
     use assertor::{EqualityAssertion, ResultAssertion};
     use indoc::indoc;
     use std::path::PathBuf;
@@ -56,8 +59,9 @@ mod validation_tests {
         let project_paths = ["main.rs"];
 
         let path_walker = FakePathWalker::new(&project_paths);
+        let github_client = github::test_helpers::AllConsistentGithubClient::new();
 
-        let validation = validation::validate_codeowners(codeowners_file, path_walker);
+        let validation = validation::validate_codeowners(codeowners_file, path_walker, github_client);
 
         assertor::assert_that!(validation).is_ok();
     }
@@ -73,10 +77,12 @@ mod validation_tests {
             contents: entries.to_string(),
         };
 
-        let validation = validation::validate_codeowners(codeowners_file, FakePathWalker::no_walking());
+        let github_client = github::test_helpers::AllConsistentGithubClient::new();
+
+        let validation = validation::validate_codeowners(codeowners_file, FakePathWalker::no_walking(), github_client);
 
         let issue = ValidationDiagnostic::builder()
-            .kind(DiagnosticKind::InvalidSyntax)
+            .kind(DiagnosticKind::Structural(StructuralIssue::InvalidSyntax))
             .line_number(0)
             .description("cannot parse owner")
             .build();
@@ -97,10 +103,12 @@ mod validation_tests {
             contents: entries.to_string(),
         };
 
-        let validation = validation::validate_codeowners(codeowners_file, FakePathWalker::no_walking());
+        let github_client = github::test_helpers::AllConsistentGithubClient::new();
+
+        let validation = validation::validate_codeowners(codeowners_file, FakePathWalker::no_walking(), github_client);
 
         let issue = ValidationDiagnostic::builder()
-            .kind(DiagnosticKind::InvalidSyntax)
+            .kind(DiagnosticKind::Structural(StructuralIssue::InvalidSyntax))
             .line_number(0)
             .description("invalid glob pattern")
             .build();
@@ -121,16 +129,18 @@ mod validation_tests {
             contents: entries.to_string(),
         };
 
-        let validation = validation::validate_codeowners(codeowners_file, FakePathWalker::no_walking());
+        let github_client = github::test_helpers::AllConsistentGithubClient::new();
+
+        let validation = validation::validate_codeowners(codeowners_file, FakePathWalker::no_walking(), github_client);
 
         let invalid_glob = ValidationDiagnostic::builder()
-            .kind(DiagnosticKind::InvalidSyntax)
+            .kind(DiagnosticKind::Structural(StructuralIssue::InvalidSyntax))
             .line_number(0)
             .description("invalid glob pattern")
             .build();
 
         let invalid_owner = ValidationDiagnostic::builder()
-            .kind(DiagnosticKind::InvalidSyntax)
+            .kind(DiagnosticKind::Structural(StructuralIssue::InvalidSyntax))
             .line_number(0)
             .description("cannot parse owner")
             .build();
@@ -159,10 +169,12 @@ mod validation_tests {
 
         let path_walker = FakePathWalker::new(&project_paths);
 
-        let validation = validation::validate_codeowners(codeowners_file, path_walker);
+        let github_client = github::test_helpers::AllConsistentGithubClient::new();
+
+        let validation = validation::validate_codeowners(codeowners_file, path_walker, github_client);
 
         let issue = ValidationDiagnostic::builder()
-            .kind(DiagnosticKind::DanglingGlobPattern)
+            .kind(DiagnosticKind::Structural(StructuralIssue::DanglingGlobPattern))
             .line_number(1)
             .description(".automation/ does not match any project path")
             .build();
@@ -189,10 +201,12 @@ mod validation_tests {
 
         let path_walker = FakePathWalker::new(&project_paths);
 
-        let validation = validation::validate_codeowners(codeowners_file, path_walker);
+        let github_client = github::test_helpers::AllConsistentGithubClient::new();
+
+        let validation = validation::validate_codeowners(codeowners_file, path_walker, github_client);
 
         let duplicated_ownership = ValidationDiagnostic::builder()
-            .kind(DiagnosticKind::DuplicateOwnership)
+            .kind(DiagnosticKind::Structural(StructuralIssue::DuplicateOwnership))
             .line_number(0)
             .description("*.rs defined multiple times : lines [0, 2]")
             .build();
@@ -219,21 +233,93 @@ mod validation_tests {
 
         let path_walker = FakePathWalker::new(&project_paths);
 
-        let validation = validation::validate_codeowners(codeowners_file, path_walker);
+        let github_client = github::test_helpers::AllConsistentGithubClient::new();
+        let validation = validation::validate_codeowners(codeowners_file, path_walker, github_client);
 
         let dangling_glob = ValidationDiagnostic::builder()
-            .kind(DiagnosticKind::DanglingGlobPattern)
+            .kind(DiagnosticKind::Structural(StructuralIssue::DanglingGlobPattern))
             .line_number(1)
             .description("docs/ does not match any project path")
             .build();
 
         let duplicated_ownership = ValidationDiagnostic::builder()
-            .kind(DiagnosticKind::DuplicateOwnership)
+            .kind(DiagnosticKind::Structural(StructuralIssue::DuplicateOwnership))
             .line_number(0)
             .description("*.rs defined multiple times : lines [0, 2]")
             .build();
 
         let expected = CodeownersValidationError::with(vec![dangling_glob, duplicated_ownership]);
+        assertor::assert_that!(validation.into()).is_equal_to(expected);
+    }
+}
+
+#[cfg(test)]
+mod consistency_validation_tests {
+    use crate::core::errors::{CodeownersValidationError, ConsistencyIssue, DiagnosticKind, ValidationDiagnostic};
+    use crate::core::models::{CodeOwnersFile, GithubIdentityHandle};
+    use crate::features::filesystem::helpers::FakePathWalker;
+    use crate::features::{github, validation};
+    use assertor::{EqualityAssertion, ResultAssertion};
+    use indoc::indoc;
+    use std::path::PathBuf;
+
+    #[test]
+    fn should_find_no_consistency_issues() {
+        let entries = indoc! {"
+            *.rs        @dotanuki-labs/rustaceans
+            .github/    @ubiratansoares
+        "};
+
+        let codeowners_file = CodeOwnersFile {
+            path: PathBuf::from("path/to/.github/CODEOWNERS"),
+            contents: entries.to_string(),
+        };
+
+        let project_paths = [".github/", "main.rs"];
+
+        let path_walker = FakePathWalker::new(&project_paths);
+
+        let github_client = github::test_helpers::FakeGithubClient::builder()
+            .add_known_user("@ubiratansoares")
+            .add_known_team("@dotanuki-labs/rustaceans")
+            .build();
+
+        let validation = validation::validate_codeowners(codeowners_file, path_walker, github_client);
+
+        assertor::assert_that!(validation).is_ok();
+    }
+
+    #[test]
+    fn should_detect_non_existing_github_user() {
+        let entries = indoc! {"
+            *.rs        @dotanuki-labs/rustaceans
+            .github/    @ufs
+        "};
+
+        let codeowners_file = CodeOwnersFile {
+            path: PathBuf::from("path/to/.github/CODEOWNERS"),
+            contents: entries.to_string(),
+        };
+
+        let project_paths = [".github/", "main.rs"];
+
+        let path_walker = FakePathWalker::new(&project_paths);
+
+        let github_client = github::test_helpers::FakeGithubClient::builder()
+            .add_known_team("@dotanuki-labs/rustaceans")
+            .build();
+
+        let validation = validation::validate_codeowners(codeowners_file, path_walker, github_client);
+
+        let user_not_found = ValidationDiagnostic::builder()
+            .kind(DiagnosticKind::Consistency(
+                ConsistencyIssue::UserDoesNotBelongToOrganization(GithubIdentityHandle::new("ufs".into())),
+            ))
+            .line_number(0)
+            .description("'ufs' user does not belong to this organization")
+            .build();
+
+        let expected = CodeownersValidationError::from(user_not_found);
         assertor::assert_that!(validation.into()).is_equal_to(expected);
     }
 }

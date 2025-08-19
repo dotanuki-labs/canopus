@@ -1,21 +1,35 @@
 // Copyright 2025 Dotanuki Labs
 // SPDX-License-Identifier: MIT
 
+use crate::core::models::{GithubIdentityHandle, GithubTeamHandle};
 use std::fmt::{Display, Formatter};
 
 #[derive(Clone, Debug, PartialEq)]
-pub enum DiagnosticKind {
+pub enum StructuralIssue {
     InvalidSyntax,
     DanglingGlobPattern,
     DuplicateOwnership,
 }
 
+#[derive(Clone, Debug, PartialEq)]
+pub enum ConsistencyIssue {
+    UserDoesNotExist(GithubIdentityHandle),
+    OrganizationDoesNotExist(GithubIdentityHandle),
+    TeamDoesNotExistWithinOrganization(GithubTeamHandle),
+    UserDoesNotBelongToOrganization(GithubIdentityHandle),
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum DiagnosticKind {
+    Structural(StructuralIssue),
+    Consistency(ConsistencyIssue),
+}
+
 impl Display for DiagnosticKind {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
-            DiagnosticKind::InvalidSyntax => write!(f, "codeowners-syntax"),
-            DiagnosticKind::DanglingGlobPattern => write!(f, "dangling-glob-pattern"),
-            DiagnosticKind::DuplicateOwnership => write!(f, "duplicated-ownership"),
+            DiagnosticKind::Structural(_) => write!(f, "structure"),
+            DiagnosticKind::Consistency(_) => write!(f, "consistency"),
         }
     }
 }
@@ -72,7 +86,7 @@ impl ValidationDiagnostic {
 
 impl Display for ValidationDiagnostic {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "L{} : {} ({})", self.line, self.context, self.kind)
+        write!(f, "[{}] L{} : {}", self.kind, self.line, self.context)
     }
 }
 
