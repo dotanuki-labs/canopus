@@ -1,7 +1,7 @@
 // Copyright 2025 Dotanuki Labs
 // SPDX-License-Identifier: MIT
 
-use crate::core::errors::{CodeownersValidationError, DiagnosticKind, ValidationDiagnostic};
+use crate::core::errors::{CodeownersValidationError, DiagnosticKind, StructuralIssue, ValidationDiagnostic};
 use anyhow::bail;
 use globset::Glob;
 use itertools::Itertools;
@@ -38,7 +38,7 @@ impl TryFrom<ParsedLine> for EmailHandle {
         };
 
         let diagnostic = ValidationDiagnostic::builder()
-            .kind(DiagnosticKind::InvalidSyntax)
+            .kind(DiagnosticKind::Structural(StructuralIssue::InvalidSyntax))
             .line_number(line)
             .description("cannot parse owner from email address")
             .build();
@@ -53,6 +53,10 @@ pub struct GithubIdentityHandle(String);
 impl GithubIdentityHandle {
     pub fn new(handle: String) -> Self {
         Self(handle)
+    }
+
+    pub fn inner(&self) -> &str {
+        &self.0
     }
 }
 
@@ -71,7 +75,7 @@ impl TryFrom<ParsedLine> for GithubIdentityHandle {
         };
 
         let diagnostic = ValidationDiagnostic::builder()
-            .kind(DiagnosticKind::InvalidSyntax)
+            .kind(DiagnosticKind::Structural(StructuralIssue::InvalidSyntax))
             .line_number(line)
             .description("invalid github handle")
             .build();
@@ -100,7 +104,7 @@ impl TryFrom<ParsedLine> for GithubTeamHandle {
 
         if parts.len() > 2 {
             let diagnostic = ValidationDiagnostic::builder()
-                .kind(DiagnosticKind::InvalidSyntax)
+                .kind(DiagnosticKind::Structural(StructuralIssue::InvalidSyntax))
                 .line_number(line)
                 .description("cannot parse github team handle")
                 .build();
@@ -118,7 +122,7 @@ impl TryFrom<ParsedLine> for GithubTeamHandle {
         };
 
         let diagnostic = ValidationDiagnostic::builder()
-            .kind(DiagnosticKind::InvalidSyntax)
+            .kind(DiagnosticKind::Structural(StructuralIssue::InvalidSyntax))
             .line_number(line)
             .description("invalid github team handle")
             .build();
@@ -138,7 +142,6 @@ impl TryFrom<ParsedLine> for Owner {
     type Error = ValidationDiagnostic;
 
     fn try_from((line, value): ParsedLine) -> Result<Self, Self::Error> {
-        println!("Tryfrom (owner) : line = {}, value = {}", line, value);
         match value {
             _ if value.starts_with("@") => {
                 let normalized = value.trim_start_matches("@").to_owned();
@@ -159,7 +162,7 @@ impl TryFrom<ParsedLine> for Owner {
             },
             _ => {
                 let diagnostic = ValidationDiagnostic::builder()
-                    .kind(DiagnosticKind::InvalidSyntax)
+                    .kind(DiagnosticKind::Structural(StructuralIssue::InvalidSyntax))
                     .line_number(line)
                     .description("cannot parse owner")
                     .build();
@@ -232,7 +235,7 @@ impl CodeOwnersEntry {
     fn check_non_empty_comment(line_number: usize, comment: &str) -> Result<(), ValidationDiagnostic> {
         if comment.is_empty() {
             let empty_comment = ValidationDiagnostic::builder()
-                .kind(DiagnosticKind::InvalidSyntax)
+                .kind(DiagnosticKind::Structural(StructuralIssue::InvalidSyntax))
                 .line_number(line_number)
                 .description("expected non-empty comment")
                 .build();
@@ -246,7 +249,7 @@ impl CodeOwnersEntry {
     fn check_non_empty_owners_list(line_number: usize, owners: &[Owner]) -> Result<(), ValidationDiagnostic> {
         if owners.is_empty() {
             let empty_owners_list = ValidationDiagnostic::builder()
-                .kind(DiagnosticKind::InvalidSyntax)
+                .kind(DiagnosticKind::Structural(StructuralIssue::InvalidSyntax))
                 .line_number(line_number)
                 .description("expected non-empty owners list")
                 .build();
@@ -279,7 +282,7 @@ impl TryFrom<(usize, &str)> for CodeOwnersEntry {
                 Ok(glob) => Some(glob),
                 Err(_) => {
                     let invalid_glob = ValidationDiagnostic::builder()
-                        .kind(DiagnosticKind::InvalidSyntax)
+                        .kind(DiagnosticKind::Structural(StructuralIssue::InvalidSyntax))
                         .line_number(line_number)
                         .description("invalid glob pattern")
                         .build();
@@ -308,7 +311,7 @@ impl TryFrom<(usize, &str)> for CodeOwnersEntry {
                         },
                         Err(_) => {
                             let invalid_owner = ValidationDiagnostic::builder()
-                                .kind(DiagnosticKind::InvalidSyntax)
+                                .kind(DiagnosticKind::Structural(StructuralIssue::InvalidSyntax))
                                 .line_number(line_number)
                                 .description("cannot parse owner")
                                 .build();

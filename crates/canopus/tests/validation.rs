@@ -67,7 +67,7 @@ fn should_detect_single_codeowners_file() {
 
     let execution = validate_codeowners(codeowners);
 
-    execution.failure().stderr(contains(
-        "L0 : *.rs does not match any project path (dangling-glob-pattern)",
-    ));
+    execution
+        .failure()
+        .stderr(contains("[structure] L0 : *.rs does not match any project path"));
 }

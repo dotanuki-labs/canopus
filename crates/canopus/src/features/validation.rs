@@ -1,21 +1,29 @@
 // Copyright 2025 Dotanuki Labs
 // SPDX-License-Identifier: MIT
 
-use crate::core::errors::{CodeownersValidationError, DiagnosticKind, ValidationDiagnostic};
-use crate::core::models::{CodeOwners, CodeOwnersEntry, CodeOwnersFile};
+use crate::core::errors::{
+    CodeownersValidationError, ConsistencyIssue, DiagnosticKind, StructuralIssue, ValidationDiagnostic,
+};
+use crate::core::models::{CodeOwners, CodeOwnersEntry, CodeOwnersFile, Owner};
 use crate::features::filesystem::PathWalker;
+use crate::features::github::GithubClient;
 use anyhow::bail;
 use itertools::Itertools;
 use std::collections::HashSet;
 use std::path::PathBuf;
 
-pub fn validate_codeowners(codeowners_file: CodeOwnersFile, path_walker: impl PathWalker) -> anyhow::Result<()> {
+pub fn validate_codeowners(
+    codeowners_file: CodeOwnersFile,
+    path_walker: impl PathWalker,
+    github_client: impl GithubClient,
+) -> anyhow::Result<()> {
     let codeowners = CodeOwners::try_from(codeowners_file.contents.as_str())?;
     log::info!("Successfully validated syntax");
 
     let validations = vec![
         check_non_matching_glob_patterns(&codeowners, &path_walker.walk()),
         check_duplicated_owners(&codeowners),
+        check_github_consistency(&codeowners, github_client),
     ];
 
     if validations.iter().all(|check| check.is_ok()) {
@@ -29,7 +37,7 @@ pub fn validate_codeowners(codeowners_file: CodeOwnersFile, path_walker: impl Pa
         .flat_map(|raised| raised.diagnostics)
         .collect_vec();
 
-    bail!(CodeownersValidationError::with(diagnostics))
+    bail!(CodeownersValidationError::with(diagnostics));
 }
 
 fn check_duplicated_owners(code_owners: &CodeOwners) -> anyhow::Result<()> {
@@ -58,7 +66,7 @@ fn check_duplicated_owners(code_owners: &CodeOwners) -> anyhow::Result<()> {
             .iter()
             .map(|(glob, lines)| {
                 ValidationDiagnostic::builder()
-                    .kind(DiagnosticKind::DuplicateOwnership)
+                    .kind(DiagnosticKind::Structural(StructuralIssue::DuplicateOwnership))
                     .line_number(lines[0])
                     .message(format!("{} defined multiple times : lines {:?}", glob, lines))
                     .build()
@@ -100,7 +108,7 @@ fn check_non_matching_glob_patterns(code_owners: &CodeOwners, paths: &[PathBuf])
         .filter(|(_, glob_matcher)| !matching_globs.contains(glob_matcher.glob()))
         .map(|(line, glob_matcher)| {
             ValidationDiagnostic::builder()
-                .kind(DiagnosticKind::DanglingGlobPattern)
+                .kind(DiagnosticKind::Structural(StructuralIssue::DanglingGlobPattern))
                 .line_number(*line)
                 .message(format!("{} does not match any project path", glob_matcher.glob()))
                 .build()
@@ -114,4 +122,66 @@ fn check_non_matching_glob_patterns(code_owners: &CodeOwners, paths: &[PathBuf])
 
     log::info!("Dangling glob patterns : not found");
     Ok(())
+}
+
+fn check_github_consistency(code_owners: &CodeOwners, github_client: impl GithubClient) -> anyhow::Result<()> {
+    let unique_ownerships = code_owners
+        .entries
+        .iter()
+        .filter_map(|entry| match entry {
+            CodeOwnersEntry::Rule(ownership) => Some(ownership),
+            _ => None,
+        })
+        .flat_map(|ownership| &ownership.owners)
+        .unique()
+        .collect_vec();
+
+    let consistency_checks = unique_ownerships
+        .into_iter()
+        .map(|owner| match owner {
+            Owner::GithubUser(identity) => github_client.check_github_identity(identity),
+            Owner::GithubTeam(team) => github_client.check_github_team(team),
+            Owner::EmailAddress(_) => Ok(()),
+        })
+        .collect_vec();
+
+    if consistency_checks.iter().all(|check| check.is_ok()) {
+        return Ok(());
+    };
+
+    let diagnostics = consistency_checks
+        .into_iter()
+        .filter_map(|check| check.err())
+        .map(|issue| match issue.clone() {
+            ConsistencyIssue::UserDoesNotExist(handle) => {
+                (issue, 0, format!("'{}' user does not exist", handle.inner()))
+            },
+            ConsistencyIssue::OrganizationDoesNotExist(handle) => {
+                (issue, 0, format!("'{}' organization does not exist", handle.inner()))
+            },
+            ConsistencyIssue::TeamDoesNotExistWithinOrganization(handle) => (
+                issue,
+                0,
+                format!(
+                    "'{}' team does not belong to '{}' organization",
+                    handle.name,
+                    handle.organization.inner()
+                ),
+            ),
+            ConsistencyIssue::UserDoesNotBelongToOrganization(handle) => (
+                issue,
+                0,
+                format!("'{}' user does not belong to this organization", handle.inner()),
+            ),
+        })
+        .map(|(issue, line, cause)| {
+            ValidationDiagnostic::builder()
+                .kind(DiagnosticKind::Consistency(issue))
+                .line_number(line)
+                .message(cause)
+                .build()
+        })
+        .collect_vec();
+
+    bail!(CodeownersValidationError::with(diagnostics))
 }
