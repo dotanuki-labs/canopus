@@ -30,7 +30,7 @@ impl PathWalker for GitAwarePathWalker {
 
 #[cfg(test)]
 pub mod helpers {
-    use crate::features::filesystem::PathWalker;
+    use crate::infra::paths::PathWalker;
     use std::path::PathBuf;
 
     pub struct FakePathWalker {

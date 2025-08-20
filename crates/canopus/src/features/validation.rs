@@ -5,8 +5,8 @@ use crate::core::errors::{
     CodeownersValidationError, ConsistencyIssue, DiagnosticKind, StructuralIssue, ValidationDiagnostic,
 };
 use crate::core::models::{CodeOwners, CodeOwnersEntry, CodeOwnersFile, Owner};
-use crate::features::filesystem::PathWalker;
-use crate::features::github::GithubClient;
+use crate::infra::github::GithubClient;
+use crate::infra::paths::PathWalker;
 use anyhow::bail;
 use itertools::Itertools;
 use std::collections::HashSet;
