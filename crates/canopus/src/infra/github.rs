@@ -31,7 +31,7 @@ impl GithubClient for GithubRestClient {
 #[cfg(test)]
 pub mod test_helpers {
     use crate::core::models::{GithubIdentityHandle, GithubTeamHandle};
-    use crate::features::github::{ConsistencyIssue, GithubClient};
+    use crate::infra::github::{ConsistencyIssue, GithubClient};
 
     pub struct AllConsistentGithubClient;
 

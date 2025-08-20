@@ -1,12 +1,11 @@
 // Copyright 2025 Dotanuki Labs
 // SPDX-License-Identifier: MIT
 
-mod filesystem;
-mod github;
 mod validation;
 
 use crate::core::models::CodeOwnersFile;
-use crate::features::github::GithubRestClient;
+use crate::infra::github::GithubRestClient;
+use crate::infra::paths;
 use std::fmt::{Display, Formatter};
 use std::path::PathBuf;
 
@@ -28,7 +27,7 @@ pub fn execute(requested: RequestedFeature) -> anyhow::Result<()> {
     match requested {
         RequestedFeature::ValidateCodeowners(project_path) => {
             let codeowners_file = CodeOwnersFile::try_from(project_path.clone())?;
-            let path_walker = filesystem::GitAwarePathWalker::new(codeowners_file.path.clone());
+            let path_walker = paths::GitAwarePathWalker::new(codeowners_file.path.clone());
             let github_client = GithubRestClient::new();
             validation::validate_codeowners(codeowners_file, path_walker, github_client)
         },
@@ -39,8 +38,9 @@ pub fn execute(requested: RequestedFeature) -> anyhow::Result<()> {
 mod structural_validation_tests {
     use crate::core::errors::{CodeownersValidationError, DiagnosticKind, StructuralIssue, ValidationDiagnostic};
     use crate::core::models::CodeOwnersFile;
-    use crate::features::filesystem::helpers::FakePathWalker;
-    use crate::features::{github, validation};
+    use crate::features::validation;
+    use crate::infra::github;
+    use crate::infra::paths::helpers::FakePathWalker;
     use assertor::{EqualityAssertion, ResultAssertion};
     use indoc::indoc;
     use std::path::PathBuf;
@@ -257,8 +257,9 @@ mod structural_validation_tests {
 mod consistency_validation_tests {
     use crate::core::errors::{CodeownersValidationError, ConsistencyIssue, DiagnosticKind, ValidationDiagnostic};
     use crate::core::models::{CodeOwnersFile, GithubIdentityHandle};
-    use crate::features::filesystem::helpers::FakePathWalker;
-    use crate::features::{github, validation};
+    use crate::features::validation;
+    use crate::infra::github;
+    use crate::infra::paths::helpers::FakePathWalker;
     use assertor::{EqualityAssertion, ResultAssertion};
     use indoc::indoc;
     use std::path::PathBuf;

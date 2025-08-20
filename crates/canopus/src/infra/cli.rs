@@ -1,9 +1,9 @@
 // Copyright 2025 Dotanuki Labs
 // SPDX-License-Identifier: MIT
 
-use crate::cli::arguments::Commands::Validate;
 use crate::features::RequestedFeature;
 use crate::features::RequestedFeature::ValidateCodeowners;
+use crate::infra::cli::Commands::Validate;
 use clap::{Parser, Subcommand, arg};
 use std::path::PathBuf;
 
