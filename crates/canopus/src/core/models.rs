@@ -6,6 +6,7 @@ use anyhow::bail;
 use globset::Glob;
 use itertools::Itertools;
 use lazy_regex::{Lazy, Regex};
+use std::collections::HashMap;
 use std::path::PathBuf;
 
 // From https://github.com/dead-claudia/github-limits
@@ -173,19 +174,19 @@ impl TryFrom<ParsedLine> for Owner {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, Hash)]
-pub struct Ownership {
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+pub struct OwnershipRule {
     pub line_number: usize,
     pub glob: Glob,
     pub owners: Vec<Owner>,
     pub inline_comment: Option<String>,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum CodeOwnersEntry {
     BlankLine,
     Comment(String),
-    Rule(Ownership),
+    Rule(OwnershipRule),
 }
 
 impl CodeOwnersEntry {
@@ -203,7 +204,7 @@ impl CodeOwnersEntry {
     ) -> Result<Self, ValidationDiagnostic> {
         Self::check_non_empty_owners_list(line_number, &owners)?;
 
-        let ownership = Ownership {
+        let ownership = OwnershipRule {
             line_number,
             glob,
             owners,
@@ -222,7 +223,7 @@ impl CodeOwnersEntry {
         Self::check_non_empty_comment(line_number, comment)?;
         Self::check_non_empty_owners_list(line_number, &owners)?;
 
-        let ownership = Ownership {
+        let ownership = OwnershipRule {
             line_number,
             glob,
             owners,
@@ -340,8 +341,27 @@ impl TryFrom<(usize, &str)> for CodeOwnersEntry {
 }
 
 #[derive(Debug, PartialEq)]
+pub struct OwnershipRecord {
+    pub line_number: usize,
+    pub glob: Glob,
+}
+
+impl OwnershipRecord {
+    pub fn new(line_number: usize, glob: Glob) -> Self {
+        Self { line_number, glob }
+    }
+}
+
+#[derive(Debug, PartialEq)]
 pub struct CodeOwners {
     pub entries: Vec<CodeOwnersEntry>,
+    pub ownerships: HashMap<Owner, Vec<OwnershipRecord>>,
+}
+
+impl CodeOwners {
+    pub fn new(entries: Vec<CodeOwnersEntry>, ownerships: HashMap<Owner, Vec<OwnershipRecord>>) -> Self {
+        Self { entries, ownerships }
+    }
 }
 
 impl TryFrom<&str> for CodeOwners {
@@ -351,11 +371,26 @@ impl TryFrom<&str> for CodeOwners {
         let lines = content.lines();
 
         let mut entries: Vec<CodeOwnersEntry> = vec![];
+        let mut ownerships: HashMap<Owner, Vec<OwnershipRecord>> = HashMap::new();
         let mut diagnostics: Vec<ValidationDiagnostic> = vec![];
 
         for (line_number, line_contents) in lines.enumerate() {
             match CodeOwnersEntry::try_from((line_number, line_contents)) {
-                Ok(entry) => entries.push(entry),
+                Ok(entry) => {
+                    entries.push(entry.clone());
+
+                    if let CodeOwnersEntry::Rule(rule) = entry {
+                        for owner in rule.owners {
+                            if !ownerships.contains_key(&owner) {
+                                ownerships.insert(owner.clone(), vec![]);
+                            }
+
+                            let new_record = OwnershipRecord::new(line_number, rule.glob.clone());
+                            let records = ownerships.get_mut(&owner).unwrap();
+                            records.push(new_record);
+                        }
+                    }
+                },
                 Err(mut error) => diagnostics.append(&mut error.diagnostics),
             }
         }
@@ -364,7 +399,7 @@ impl TryFrom<&str> for CodeOwners {
             bail!(CodeownersValidationError::with(diagnostics));
         }
 
-        Ok(CodeOwners { entries })
+        Ok(CodeOwners::new(entries, ownerships))
     }
 }
 

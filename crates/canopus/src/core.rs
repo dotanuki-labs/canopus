@@ -7,11 +7,12 @@ pub mod models;
 #[cfg(test)]
 mod tests {
     use crate::core::models::{
-        CodeOwners, CodeOwnersEntry, EmailHandle, GithubIdentityHandle, GithubTeamHandle, Owner,
+        CodeOwners, CodeOwnersEntry, EmailHandle, GithubIdentityHandle, GithubTeamHandle, Owner, OwnershipRecord,
     };
     use assertor::{EqualityAssertion, ResultAssertion};
     use globset::Glob;
     use indoc::indoc;
+    use std::collections::HashMap;
 
     #[test]
     fn should_parse_trivial_codeowners() -> anyhow::Result<()> {
@@ -21,16 +22,24 @@ mod tests {
 
         let codeowners = CodeOwners::try_from(codeowners_rules)?;
 
-        let expected = CodeOwners {
-            entries: vec![CodeOwnersEntry::try_new_rule(
-                0,
-                Glob::new("*.rs")?,
-                vec![Owner::GithubTeam(GithubTeamHandle::new(
-                    GithubIdentityHandle::from("dotanuki-labs"),
-                    "rustaceans".to_string(),
-                ))],
-            )?],
-        };
+        let entries = vec![CodeOwnersEntry::try_new_rule(
+            0,
+            Glob::new("*.rs")?,
+            vec![Owner::GithubTeam(GithubTeamHandle::new(
+                GithubIdentityHandle::from("dotanuki-labs"),
+                "rustaceans".to_string(),
+            ))],
+        )?];
+
+        let ownerships = HashMap::from([(
+            Owner::GithubTeam(GithubTeamHandle::new(
+                GithubIdentityHandle::from("dotanuki-labs"),
+                "rustaceans".to_string(),
+            )),
+            vec![OwnershipRecord::new(0, Glob::new("*.rs")?)],
+        )]);
+
+        let expected = CodeOwners::new(entries, ownerships);
 
         assertor::assert_that!(codeowners).is_equal_to(expected);
         Ok(())
@@ -41,25 +50,33 @@ mod tests {
         let codeowners_rules = indoc! {"
             # Rules for dotanuki labs
 
-            *.rs    @dotanuki-labs/rustaceans
+            *.rs    @dotanuki-labs/devs
         "};
 
         let codeowners = CodeOwners::try_from(codeowners_rules)?;
 
-        let expected = CodeOwners {
-            entries: vec![
-                CodeOwnersEntry::try_new_comment(0, "Rules for dotanuki labs")?,
-                CodeOwnersEntry::BlankLine,
-                CodeOwnersEntry::try_new_rule(
-                    2,
-                    Glob::new("*.rs")?,
-                    vec![Owner::GithubTeam(GithubTeamHandle::new(
-                        GithubIdentityHandle::from("dotanuki-labs"),
-                        "rustaceans".to_string(),
-                    ))],
-                )?,
-            ],
-        };
+        let entries = vec![
+            CodeOwnersEntry::try_new_comment(0, "Rules for dotanuki labs")?,
+            CodeOwnersEntry::BlankLine,
+            CodeOwnersEntry::try_new_rule(
+                2,
+                Glob::new("*.rs")?,
+                vec![Owner::GithubTeam(GithubTeamHandle::new(
+                    GithubIdentityHandle::from("dotanuki-labs"),
+                    "devs".to_string(),
+                ))],
+            )?,
+        ];
+
+        let ownerships = HashMap::from([(
+            Owner::GithubTeam(GithubTeamHandle::new(
+                GithubIdentityHandle::from("dotanuki-labs"),
+                "devs".to_string(),
+            )),
+            vec![OwnershipRecord::new(2, Glob::new("*.rs")?)],
+        )]);
+
+        let expected = CodeOwners::new(entries, ownerships);
 
         assertor::assert_that!(codeowners).is_equal_to(expected);
         Ok(())
@@ -68,22 +85,30 @@ mod tests {
     #[test]
     fn should_parse_commented_rule() -> anyhow::Result<()> {
         let codeowners_rules = indoc! {"
-            *.rs    @dotanuki-labs/rustaceans   # Enforce global control
+            *.rs    @dotanuki-labs/crabbers   # Enforce global control
         "};
 
         let codeowners = CodeOwners::try_from(codeowners_rules)?;
 
-        let expected = CodeOwners {
-            entries: vec![CodeOwnersEntry::try_new_commented_rule(
-                0,
-                Glob::new("*.rs")?,
-                vec![Owner::GithubTeam(GithubTeamHandle::new(
-                    GithubIdentityHandle::from("dotanuki-labs"),
-                    "rustaceans".to_string(),
-                ))],
-                "Enforce global control",
-            )?],
-        };
+        let entries = vec![CodeOwnersEntry::try_new_commented_rule(
+            0,
+            Glob::new("*.rs")?,
+            vec![Owner::GithubTeam(GithubTeamHandle::new(
+                GithubIdentityHandle::from("dotanuki-labs"),
+                "crabbers".to_string(),
+            ))],
+            "Enforce global control",
+        )?];
+
+        let ownerships = HashMap::from([(
+            Owner::GithubTeam(GithubTeamHandle::new(
+                GithubIdentityHandle::from("dotanuki-labs"),
+                "crabbers".to_string(),
+            )),
+            vec![OwnershipRecord::new(0, Glob::new("*.rs")?)],
+        )]);
+
+        let expected = CodeOwners::new(entries, ownerships);
 
         assertor::assert_that!(codeowners).is_equal_to(expected);
         Ok(())
@@ -106,7 +131,18 @@ mod tests {
             ],
         )?;
 
-        let expected = CodeOwners { entries: vec![entry] };
+        let ownerships = HashMap::from([
+            (
+                Owner::GithubUser(GithubIdentityHandle::from("ubiratansoares")),
+                vec![OwnershipRecord::new(0, Glob::new("*.rs")?)],
+            ),
+            (
+                Owner::EmailAddress(EmailHandle::new("rust@dotanuki.dev".to_string())),
+                vec![OwnershipRecord::new(0, Glob::new("*.rs")?)],
+            ),
+        ]);
+
+        let expected = CodeOwners::new(vec![entry], ownerships);
 
         assertor::assert_that!(codeowners).is_equal_to(expected);
 

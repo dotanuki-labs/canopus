@@ -256,7 +256,7 @@ mod structural_validation_tests {
 #[cfg(test)]
 mod consistency_validation_tests {
     use crate::core::errors::{CodeownersValidationError, ConsistencyIssue, DiagnosticKind, ValidationDiagnostic};
-    use crate::core::models::{CodeOwnersFile, GithubIdentityHandle};
+    use crate::core::models::{CodeOwnersFile, GithubIdentityHandle, GithubTeamHandle};
     use crate::features::validation;
     use crate::infra::github;
     use crate::infra::paths::helpers::FakePathWalker;
@@ -316,8 +316,47 @@ mod consistency_validation_tests {
             .kind(DiagnosticKind::Consistency(
                 ConsistencyIssue::UserDoesNotBelongToOrganization(GithubIdentityHandle::new("ufs".into())),
             ))
-            .line_number(0)
+            .line_number(1)
             .description("'ufs' user does not belong to this organization")
+            .build();
+
+        let expected = CodeownersValidationError::from(user_not_found);
+        assertor::assert_that!(validation.into()).is_equal_to(expected);
+    }
+
+    #[test]
+    fn should_detect_non_existing_github_team() {
+        let entries = indoc! {"
+            *.rs        @dotanuki-labs/rustaceans
+            docs/       @dotanuki-labs/writers
+            .github/    @dotanuki-labs/devops
+        "};
+
+        let codeowners_file = CodeOwnersFile {
+            path: PathBuf::from("path/to/.github/CODEOWNERS"),
+            contents: entries.to_string(),
+        };
+
+        let project_paths = [".github/", "docs/", "main.rs"];
+
+        let path_walker = FakePathWalker::new(&project_paths);
+
+        let github_client = github::test_helpers::FakeGithubClient::builder()
+            .add_known_team("@dotanuki-labs/rustaceans")
+            .add_known_team("@dotanuki-labs/writers")
+            .build();
+
+        let validation = validation::validate_codeowners(codeowners_file, path_walker, github_client);
+
+        let user_not_found = ValidationDiagnostic::builder()
+            .kind(DiagnosticKind::Consistency(
+                ConsistencyIssue::TeamDoesNotExistWithinOrganization(GithubTeamHandle::new(
+                    GithubIdentityHandle::new("dotanuki-labs".into()),
+                    "devops".to_string(),
+                )),
+            ))
+            .line_number(2)
+            .description("'devops' team does not belong to 'dotanuki-labs' organization")
             .build();
 
         let expected = CodeownersValidationError::from(user_not_found);
