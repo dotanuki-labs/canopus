@@ -3,7 +3,7 @@
 
 mod validation;
 
-use crate::core::models::CodeOwnersFile;
+use crate::core::models::codeowners::CodeOwnersFile;
 use crate::infra::github::GithubRestClient;
 use crate::infra::paths;
 use std::fmt::{Display, Formatter};
@@ -37,7 +37,7 @@ pub fn execute(requested: RequestedFeature) -> anyhow::Result<()> {
 #[cfg(test)]
 mod structural_validation_tests {
     use crate::core::errors::{CodeownersValidationError, DiagnosticKind, StructuralIssue, ValidationDiagnostic};
-    use crate::core::models::CodeOwnersFile;
+    use crate::core::models::codeowners::CodeOwnersFile;
     use crate::features::validation;
     use crate::infra::github;
     use crate::infra::paths::helpers::FakePathWalker;
@@ -256,7 +256,8 @@ mod structural_validation_tests {
 #[cfg(test)]
 mod consistency_validation_tests {
     use crate::core::errors::{CodeownersValidationError, ConsistencyIssue, DiagnosticKind, ValidationDiagnostic};
-    use crate::core::models::{CodeOwnersFile, GithubIdentityHandle, GithubTeamHandle};
+    use crate::core::models::codeowners::CodeOwnersFile;
+    use crate::core::models::handles::{GithubIdentityHandle, GithubTeamHandle};
     use crate::features::validation;
     use crate::infra::github;
     use crate::infra::paths::helpers::FakePathWalker;

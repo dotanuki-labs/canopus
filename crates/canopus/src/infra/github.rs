@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 use crate::core::errors::ConsistencyIssue;
-use crate::core::models::{GithubIdentityHandle, GithubTeamHandle};
+use crate::core::models::handles::{GithubIdentityHandle, GithubTeamHandle};
 
 pub trait GithubClient {
     fn check_github_identity(&self, identity: &GithubIdentityHandle) -> Result<(), ConsistencyIssue>;
@@ -30,7 +30,7 @@ impl GithubClient for GithubRestClient {
 
 #[cfg(test)]
 pub mod test_helpers {
-    use crate::core::models::{GithubIdentityHandle, GithubTeamHandle};
+    use crate::core::models::handles::{GithubIdentityHandle, GithubTeamHandle};
     use crate::infra::github::{ConsistencyIssue, GithubClient};
 
     pub struct AllConsistentGithubClient;
