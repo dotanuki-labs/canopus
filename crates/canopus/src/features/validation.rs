@@ -4,7 +4,8 @@
 use crate::core::errors::{
     CodeownersValidationError, ConsistencyIssue, DiagnosticKind, StructuralIssue, ValidationDiagnostic,
 };
-use crate::core::models::{CodeOwners, CodeOwnersEntry, CodeOwnersFile, Owner};
+use crate::core::models::codeowners::{CodeOwners, CodeOwnersEntry, CodeOwnersFile};
+use crate::core::models::handles::Owner;
 use crate::infra::github::GithubClient;
 use crate::infra::paths::PathWalker;
 use anyhow::bail;

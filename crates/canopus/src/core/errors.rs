@@ -1,7 +1,7 @@
 // Copyright 2025 Dotanuki Labs
 // SPDX-License-Identifier: MIT
 
-use crate::core::models::{GithubIdentityHandle, GithubTeamHandle};
+use crate::core::models::handles::{GithubIdentityHandle, GithubTeamHandle};
 use std::fmt::{Display, Formatter};
 
 #[derive(Clone, Debug, PartialEq)]
