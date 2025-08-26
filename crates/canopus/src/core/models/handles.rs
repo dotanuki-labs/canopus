@@ -2,9 +2,10 @@
 // SPDX-License-Identifier: MIT
 
 use crate::core::errors::{DiagnosticKind, StructuralIssue, ValidationDiagnostic};
-use crate::core::models::ParsedLine;
 use itertools::Itertools;
 use lazy_regex::{Lazy, Regex};
+
+type ParsedLine = (usize, String);
 
 // From https://github.com/dead-claudia/github-limits
 static GITHUB_HANDLE_REGEX: &Lazy<Regex, fn() -> Regex> = lazy_regex::regex!(r#"^[a-zA-Z\d](-?[a-zA-Z\d]){0,38}$"#);

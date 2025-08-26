@@ -126,7 +126,7 @@ fn check_non_matching_glob_patterns(code_owners: &CodeOwners, paths: &[PathBuf])
 }
 
 fn check_github_consistency(code_owners: &CodeOwners, github_client: impl GithubClient) -> anyhow::Result<()> {
-    let unique_ownerships = code_owners.ownerships.keys().collect_vec();
+    let unique_ownerships = code_owners.unique_owners();
 
     let consistency_checks = unique_ownerships
         .into_iter()
@@ -147,31 +147,28 @@ fn check_github_consistency(code_owners: &CodeOwners, github_client: impl Github
         .map(|issue| match issue.clone() {
             ConsistencyIssue::UserDoesNotExist(handle) => {
                 let owner = Owner::GithubUser(handle.clone());
-                let ownership = code_owners.ownerships.get(&owner);
-                let first_occurrence = ownership.unwrap().first().unwrap();
+                let first_occurrence = code_owners.occurrences(&owner)[0];
                 (
                     issue,
-                    first_occurrence.line_number,
+                    first_occurrence,
                     format!("'{}' user does not exist", handle.inner()),
                 )
             },
             ConsistencyIssue::OrganizationDoesNotExist(handle) => {
                 let owner = Owner::GithubUser(handle.clone());
-                let ownership = code_owners.ownerships.get(&owner);
-                let first_occurrence = ownership.unwrap().first().unwrap();
+                let first_occurrence = code_owners.occurrences(&owner)[0];
                 (
                     issue,
-                    first_occurrence.line_number,
+                    first_occurrence,
                     format!("'{}' organization does not exist", handle.inner()),
                 )
             },
             ConsistencyIssue::TeamDoesNotExistWithinOrganization(handle) => {
                 let owner = Owner::GithubTeam(handle.clone());
-                let ownership = code_owners.ownerships.get(&owner);
-                let first_occurrence = ownership.unwrap().first().unwrap();
+                let first_occurrence = code_owners.occurrences(&owner)[0];
                 (
                     issue,
-                    first_occurrence.line_number,
+                    first_occurrence,
                     format!(
                         "'{}' team does not belong to '{}' organization",
                         handle.name,
@@ -181,11 +178,10 @@ fn check_github_consistency(code_owners: &CodeOwners, github_client: impl Github
             },
             ConsistencyIssue::UserDoesNotBelongToOrganization(handle) => {
                 let owner = Owner::GithubUser(handle.clone());
-                let ownership = code_owners.ownerships.get(&owner);
-                let first_occurrence = ownership.unwrap().first().unwrap();
+                let first_occurrence = code_owners.occurrences(&owner)[0];
                 (
                     issue,
-                    first_occurrence.line_number,
+                    first_occurrence,
                     format!("'{}' user does not belong to this organization", handle.inner()),
                 )
             },
