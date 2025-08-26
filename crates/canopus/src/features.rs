@@ -36,7 +36,8 @@ pub fn execute(requested: RequestedFeature) -> anyhow::Result<()> {
 
 #[cfg(test)]
 mod structural_validation_tests {
-    use crate::core::errors::{CodeownersValidationError, DiagnosticKind, StructuralIssue, ValidationDiagnostic};
+    use crate::core::errors::test_helpers::DiagnosticKindFactory;
+    use crate::core::errors::{CodeownersValidationError, ValidationDiagnostic};
     use crate::core::models::codeowners::CodeOwnersFile;
     use crate::features::validation;
     use crate::infra::github;
@@ -82,7 +83,7 @@ mod structural_validation_tests {
         let validation = validation::validate_codeowners(codeowners_file, FakePathWalker::no_walking(), github_client);
 
         let issue = ValidationDiagnostic::builder()
-            .kind(DiagnosticKind::Structural(StructuralIssue::InvalidSyntax))
+            .kind(DiagnosticKindFactory::invalid_syntax())
             .line_number(0)
             .description("cannot parse owner")
             .build();
@@ -108,7 +109,7 @@ mod structural_validation_tests {
         let validation = validation::validate_codeowners(codeowners_file, FakePathWalker::no_walking(), github_client);
 
         let issue = ValidationDiagnostic::builder()
-            .kind(DiagnosticKind::Structural(StructuralIssue::InvalidSyntax))
+            .kind(DiagnosticKindFactory::invalid_syntax())
             .line_number(0)
             .description("invalid glob pattern")
             .build();
@@ -134,13 +135,13 @@ mod structural_validation_tests {
         let validation = validation::validate_codeowners(codeowners_file, FakePathWalker::no_walking(), github_client);
 
         let invalid_glob = ValidationDiagnostic::builder()
-            .kind(DiagnosticKind::Structural(StructuralIssue::InvalidSyntax))
+            .kind(DiagnosticKindFactory::invalid_syntax())
             .line_number(0)
             .description("invalid glob pattern")
             .build();
 
         let invalid_owner = ValidationDiagnostic::builder()
-            .kind(DiagnosticKind::Structural(StructuralIssue::InvalidSyntax))
+            .kind(DiagnosticKindFactory::invalid_syntax())
             .line_number(0)
             .description("cannot parse owner")
             .build();
@@ -174,7 +175,7 @@ mod structural_validation_tests {
         let validation = validation::validate_codeowners(codeowners_file, path_walker, github_client);
 
         let issue = ValidationDiagnostic::builder()
-            .kind(DiagnosticKind::Structural(StructuralIssue::DanglingGlobPattern))
+            .kind(DiagnosticKindFactory::dangling_glob_pattern())
             .line_number(1)
             .description(".automation/ does not match any project path")
             .build();
@@ -206,7 +207,7 @@ mod structural_validation_tests {
         let validation = validation::validate_codeowners(codeowners_file, path_walker, github_client);
 
         let duplicated_ownership = ValidationDiagnostic::builder()
-            .kind(DiagnosticKind::Structural(StructuralIssue::DuplicateOwnership))
+            .kind(DiagnosticKindFactory::duplicate_ownership())
             .line_number(0)
             .description("*.rs defined multiple times : lines [0, 2]")
             .build();
@@ -237,13 +238,13 @@ mod structural_validation_tests {
         let validation = validation::validate_codeowners(codeowners_file, path_walker, github_client);
 
         let dangling_glob = ValidationDiagnostic::builder()
-            .kind(DiagnosticKind::Structural(StructuralIssue::DanglingGlobPattern))
+            .kind(DiagnosticKindFactory::dangling_glob_pattern())
             .line_number(1)
             .description("docs/ does not match any project path")
             .build();
 
         let duplicated_ownership = ValidationDiagnostic::builder()
-            .kind(DiagnosticKind::Structural(StructuralIssue::DuplicateOwnership))
+            .kind(DiagnosticKindFactory::duplicate_ownership())
             .line_number(0)
             .description("*.rs defined multiple times : lines [0, 2]")
             .build();
@@ -255,9 +256,9 @@ mod structural_validation_tests {
 
 #[cfg(test)]
 mod consistency_validation_tests {
-    use crate::core::errors::{CodeownersValidationError, ConsistencyIssue, DiagnosticKind, ValidationDiagnostic};
+    use crate::core::errors::test_helpers::DiagnosticKindFactory;
+    use crate::core::errors::{CodeownersValidationError, ValidationDiagnostic};
     use crate::core::models::codeowners::CodeOwnersFile;
-    use crate::core::models::handles::{GithubIdentityHandle, GithubTeamHandle};
     use crate::features::validation;
     use crate::infra::github;
     use crate::infra::paths::helpers::FakePathWalker;
@@ -314,9 +315,7 @@ mod consistency_validation_tests {
         let validation = validation::validate_codeowners(codeowners_file, path_walker, github_client);
 
         let user_not_found = ValidationDiagnostic::builder()
-            .kind(DiagnosticKind::Consistency(
-                ConsistencyIssue::UserDoesNotBelongToOrganization(GithubIdentityHandle::new("ufs".into())),
-            ))
+            .kind(DiagnosticKindFactory::user_does_not_belong_to_organization("ufs"))
             .line_number(1)
             .description("'ufs' user does not belong to this organization")
             .build();
@@ -350,12 +349,7 @@ mod consistency_validation_tests {
         let validation = validation::validate_codeowners(codeowners_file, path_walker, github_client);
 
         let user_not_found = ValidationDiagnostic::builder()
-            .kind(DiagnosticKind::Consistency(
-                ConsistencyIssue::TeamDoesNotExistWithinOrganization(GithubTeamHandle::new(
-                    GithubIdentityHandle::new("dotanuki-labs".into()),
-                    "devops".to_string(),
-                )),
-            ))
+            .kind(DiagnosticKindFactory::team_does_not_exist("dotanuki-labs", "devops"))
             .line_number(2)
             .description("'devops' team does not belong to 'dotanuki-labs' organization")
             .build();
