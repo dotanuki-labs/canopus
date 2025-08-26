@@ -5,6 +5,7 @@ use crate::core::errors::{CodeownersValidationError, DiagnosticKind, StructuralI
 use crate::core::models::handles::Owner;
 use anyhow::bail;
 use globset::Glob;
+use itertools::Itertools;
 use std::collections::HashMap;
 use std::path::PathBuf;
 
@@ -251,12 +252,23 @@ impl OwnershipRecord {
 #[derive(Debug, PartialEq)]
 pub struct CodeOwners {
     pub entries: Vec<CodeOwnersEntry>,
-    pub ownerships: HashMap<Owner, Vec<OwnershipRecord>>,
+    ownerships: HashMap<Owner, Vec<OwnershipRecord>>,
 }
 
 impl CodeOwners {
     pub fn new(entries: Vec<CodeOwnersEntry>, ownerships: HashMap<Owner, Vec<OwnershipRecord>>) -> Self {
         Self { entries, ownerships }
+    }
+
+    pub fn unique_owners(&self) -> Vec<&Owner> {
+        self.ownerships.keys().collect_vec()
+    }
+
+    pub fn occurrences(&self, owner: &Owner) -> Vec<usize> {
+        match &self.ownerships.get(owner) {
+            None => vec![],
+            Some(records) => records.iter().map(|record| record.line_number).collect(),
+        }
     }
 }
 

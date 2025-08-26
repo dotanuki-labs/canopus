@@ -3,5 +3,3 @@
 
 pub mod codeowners;
 pub mod handles;
-
-type ParsedLine = (usize, String);
