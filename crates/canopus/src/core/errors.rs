@@ -140,3 +140,35 @@ impl From<anyhow::Result<()>> for CodeownersValidationError {
         value.expect_err("expecting an error").downcast().unwrap()
     }
 }
+
+#[cfg(test)]
+pub mod test_helpers {
+    use crate::core::errors::{ConsistencyIssue, DiagnosticKind, StructuralIssue};
+    use crate::core::models::handles::{GithubIdentityHandle, GithubTeamHandle};
+
+    pub struct DiagnosticKindFactory;
+
+    impl DiagnosticKindFactory {
+        pub fn invalid_syntax() -> DiagnosticKind {
+            DiagnosticKind::Structural(StructuralIssue::InvalidSyntax)
+        }
+
+        pub fn dangling_glob_pattern() -> DiagnosticKind {
+            DiagnosticKind::Structural(StructuralIssue::DanglingGlobPattern)
+        }
+
+        pub fn duplicate_ownership() -> DiagnosticKind {
+            DiagnosticKind::Structural(StructuralIssue::DuplicateOwnership)
+        }
+
+        pub fn team_does_not_exist(organization: &str, team: &str) -> DiagnosticKind {
+            let handle = GithubTeamHandle::new(GithubIdentityHandle::new(organization.to_string()), team.to_string());
+            DiagnosticKind::Consistency(ConsistencyIssue::TeamDoesNotExistWithinOrganization(handle))
+        }
+
+        pub fn user_does_not_belong_to_organization(name: &str) -> DiagnosticKind {
+            let handle = GithubIdentityHandle::new(name.to_string());
+            DiagnosticKind::Consistency(ConsistencyIssue::UserDoesNotBelongToOrganization(handle))
+        }
+    }
+}
