@@ -7,10 +7,11 @@ mod core;
 mod features;
 mod infra;
 
-fn main() -> anyhow::Result<()> {
+#[tokio::main]
+async fn main() -> anyhow::Result<()> {
     better_panic::install();
     human_panic::setup_panic!();
 
     let feature = cli::parse_arguments()?;
-    features::execute(feature)
+    features::execute(feature).await
 }

@@ -4,7 +4,8 @@
 mod validation;
 
 use crate::core::models::codeowners::CodeOwnersFile;
-use crate::infra::github::GithubRestClient;
+use crate::features::validation::CodeOwnersValidator;
+use crate::infra::github::GithubConsistencyChecker;
 use crate::infra::paths;
 use std::fmt::{Display, Formatter};
 use std::path::PathBuf;
@@ -23,13 +24,14 @@ impl Display for RequestedFeature {
         formatter.write_str(formatted)
     }
 }
-pub fn execute(requested: RequestedFeature) -> anyhow::Result<()> {
+pub async fn execute(requested: RequestedFeature) -> anyhow::Result<()> {
     match requested {
         RequestedFeature::ValidateCodeowners(project_path) => {
             let codeowners_file = CodeOwnersFile::try_from(project_path.clone())?;
-            let path_walker = paths::GitAwarePathWalker::new(codeowners_file.path.clone());
-            let github_client = GithubRestClient::new();
-            validation::validate_codeowners(codeowners_file, path_walker, github_client)
+            let path_walker = paths::PathWalker::GitAware(codeowners_file.path.clone());
+            let consistency_checker = GithubConsistencyChecker::ApiBased;
+            let validator = CodeOwnersValidator::new(consistency_checker, path_walker);
+            validator.validate_codeowners(codeowners_file).await
         },
     }
 }
@@ -39,15 +41,16 @@ mod structural_validation_tests {
     use crate::core::errors::test_helpers::DiagnosticKindFactory;
     use crate::core::errors::{CodeownersValidationError, ValidationDiagnostic};
     use crate::core::models::codeowners::CodeOwnersFile;
-    use crate::features::validation;
+    use crate::features::validation::CodeOwnersValidator;
     use crate::infra::github;
-    use crate::infra::paths::helpers::FakePathWalker;
+    use crate::infra::paths::PathWalker;
     use assertor::{EqualityAssertion, ResultAssertion};
+    use github::GithubConsistencyChecker;
     use indoc::indoc;
     use std::path::PathBuf;
 
-    #[test]
-    fn should_find_no_syntax_issues() {
+    #[tokio::test]
+    async fn should_find_no_syntax_issues() {
         let entries = indoc! {"
             *.rs    @org/rustaceans
         "};
@@ -57,18 +60,18 @@ mod structural_validation_tests {
             contents: entries.to_string(),
         };
 
-        let project_paths = ["main.rs"];
+        let project_paths = vec!["main.rs"];
+        let path_walker = PathWalker::with_paths(project_paths);
+        let consistency_checker = GithubConsistencyChecker::ConsistentState;
+        let validator = CodeOwnersValidator::new(consistency_checker, path_walker);
 
-        let path_walker = FakePathWalker::new(&project_paths);
-        let github_client = github::test_helpers::AllConsistentGithubClient::new();
-
-        let validation = validation::validate_codeowners(codeowners_file, path_walker, github_client);
+        let validation = validator.validate_codeowners(codeowners_file).await;
 
         assertor::assert_that!(validation).is_ok();
     }
 
-    #[test]
-    fn should_detect_owners_syntax_issue() {
+    #[tokio::test]
+    async fn should_detect_owners_syntax_issue() {
         let entries = indoc! {"
             *.rs    org/rustaceans
         "};
@@ -78,9 +81,11 @@ mod structural_validation_tests {
             contents: entries.to_string(),
         };
 
-        let github_client = github::test_helpers::AllConsistentGithubClient::new();
+        let path_walker = PathWalker::with_paths(vec![]);
+        let consistency_checker = GithubConsistencyChecker::ConsistentState;
+        let validator = CodeOwnersValidator::new(consistency_checker, path_walker);
 
-        let validation = validation::validate_codeowners(codeowners_file, FakePathWalker::no_walking(), github_client);
+        let validation = validator.validate_codeowners(codeowners_file).await;
 
         let issue = ValidationDiagnostic::builder()
             .kind(DiagnosticKindFactory::invalid_syntax())
@@ -93,8 +98,8 @@ mod structural_validation_tests {
         assertor::assert_that!(validation.into()).is_equal_to(expected);
     }
 
-    #[test]
-    fn should_detect_glob_syntax_issue() {
+    #[tokio::test]
+    async fn should_detect_glob_syntax_issue() {
         let entries = indoc! {"
             [z-a]*.rs    @org/crabbers
         "};
@@ -104,9 +109,11 @@ mod structural_validation_tests {
             contents: entries.to_string(),
         };
 
-        let github_client = github::test_helpers::AllConsistentGithubClient::new();
+        let path_walker = PathWalker::with_paths(vec![]);
+        let consistency_checker = GithubConsistencyChecker::ConsistentState;
+        let validator = CodeOwnersValidator::new(consistency_checker, path_walker);
 
-        let validation = validation::validate_codeowners(codeowners_file, FakePathWalker::no_walking(), github_client);
+        let validation = validator.validate_codeowners(codeowners_file).await;
 
         let issue = ValidationDiagnostic::builder()
             .kind(DiagnosticKindFactory::invalid_syntax())
@@ -119,8 +126,8 @@ mod structural_validation_tests {
         assertor::assert_that!(validation.into()).is_equal_to(expected);
     }
 
-    #[test]
-    fn should_report_multiple_issues_for_the_same_entry() {
+    #[tokio::test]
+    async fn should_report_multiple_issues_for_the_same_entry() {
         let entries = indoc! {"
             [z-a]*.rs    org/crabbers
         "};
@@ -130,9 +137,11 @@ mod structural_validation_tests {
             contents: entries.to_string(),
         };
 
-        let github_client = github::test_helpers::AllConsistentGithubClient::new();
+        let path_walker = PathWalker::with_paths(vec![]);
+        let consistency_checker = GithubConsistencyChecker::ConsistentState;
+        let validator = CodeOwnersValidator::new(consistency_checker, path_walker);
 
-        let validation = validation::validate_codeowners(codeowners_file, FakePathWalker::no_walking(), github_client);
+        let validation = validator.validate_codeowners(codeowners_file).await;
 
         let invalid_glob = ValidationDiagnostic::builder()
             .kind(DiagnosticKindFactory::invalid_syntax())
@@ -151,8 +160,8 @@ mod structural_validation_tests {
         assertor::assert_that!(validation.into()).is_equal_to(expected);
     }
 
-    #[test]
-    fn should_detect_dangling_globs() {
+    #[tokio::test]
+    async fn should_detect_dangling_globs() {
         let entries = indoc! {"
             *.rs            @org/rustaceans
             .automation/    @org/infra
@@ -163,16 +172,13 @@ mod structural_validation_tests {
             contents: entries.to_string(),
         };
 
-        let project_paths = [
-            // Already present as a project file
-            "validation.rs",
-        ];
+        let project_paths = vec!["validation.rs"];
 
-        let path_walker = FakePathWalker::new(&project_paths);
+        let path_walker = PathWalker::with_paths(project_paths);
+        let consistency_checker = GithubConsistencyChecker::ConsistentState;
+        let validator = CodeOwnersValidator::new(consistency_checker, path_walker);
 
-        let github_client = github::test_helpers::AllConsistentGithubClient::new();
-
-        let validation = validation::validate_codeowners(codeowners_file, path_walker, github_client);
+        let validation = validator.validate_codeowners(codeowners_file).await;
 
         let issue = ValidationDiagnostic::builder()
             .kind(DiagnosticKindFactory::dangling_glob_pattern())
@@ -185,8 +191,8 @@ mod structural_validation_tests {
         assertor::assert_that!(validation.into()).is_equal_to(expected);
     }
 
-    #[test]
-    fn should_detect_strictly_duplicated_ownership_rules() {
+    #[tokio::test]
+    async fn should_detect_strictly_duplicated_ownership_rules() {
         let entries = indoc! {"
             *.rs     @org/rustaceans
             docs/    @org/rustaceans
@@ -198,13 +204,13 @@ mod structural_validation_tests {
             contents: entries.to_string(),
         };
 
-        let project_paths = ["validation.rs", "docs/", "docs/README.md"];
+        let project_paths = vec!["validation.rs", "docs/", "docs/README.md"];
 
-        let path_walker = FakePathWalker::new(&project_paths);
+        let path_walker = PathWalker::with_paths(project_paths);
+        let consistency_checker = GithubConsistencyChecker::ConsistentState;
+        let validator = CodeOwnersValidator::new(consistency_checker, path_walker);
 
-        let github_client = github::test_helpers::AllConsistentGithubClient::new();
-
-        let validation = validation::validate_codeowners(codeowners_file, path_walker, github_client);
+        let validation = validator.validate_codeowners(codeowners_file).await;
 
         let duplicated_ownership = ValidationDiagnostic::builder()
             .kind(DiagnosticKindFactory::duplicate_ownership())
@@ -217,8 +223,8 @@ mod structural_validation_tests {
         assertor::assert_that!(validation.into()).is_equal_to(expected);
     }
 
-    #[test]
-    fn should_detect_multiple_non_syntax_issues() {
+    #[tokio::test]
+    async fn should_detect_multiple_non_syntax_issues() {
         let entries = indoc! {"
             *.rs        @org/rustaceans
             docs/       @org/devs
@@ -230,12 +236,12 @@ mod structural_validation_tests {
             contents: entries.to_string(),
         };
 
-        let project_paths = ["validation.rs", ".github/", ".github/CODEOWNERS"];
+        let project_paths = vec!["validation.rs", ".github/", ".github/CODEOWNERS"];
+        let path_walker = PathWalker::with_paths(project_paths);
+        let consistency_checker = GithubConsistencyChecker::ConsistentState;
+        let validator = CodeOwnersValidator::new(consistency_checker, path_walker);
 
-        let path_walker = FakePathWalker::new(&project_paths);
-
-        let github_client = github::test_helpers::AllConsistentGithubClient::new();
-        let validation = validation::validate_codeowners(codeowners_file, path_walker, github_client);
+        let validation = validator.validate_codeowners(codeowners_file).await;
 
         let dangling_glob = ValidationDiagnostic::builder()
             .kind(DiagnosticKindFactory::dangling_glob_pattern())
@@ -259,15 +265,15 @@ mod consistency_validation_tests {
     use crate::core::errors::test_helpers::DiagnosticKindFactory;
     use crate::core::errors::{CodeownersValidationError, ValidationDiagnostic};
     use crate::core::models::codeowners::CodeOwnersFile;
-    use crate::features::validation;
+    use crate::features::validation::CodeOwnersValidator;
     use crate::infra::github;
-    use crate::infra::paths::helpers::FakePathWalker;
+    use crate::infra::paths::PathWalker;
     use assertor::{EqualityAssertion, ResultAssertion};
     use indoc::indoc;
     use std::path::PathBuf;
 
-    #[test]
-    fn should_find_no_consistency_issues() {
+    #[tokio::test]
+    async fn should_find_no_consistency_issues() {
         let entries = indoc! {"
             *.rs        @dotanuki-labs/rustaceans
             .github/    @ubiratansoares
@@ -278,22 +284,24 @@ mod consistency_validation_tests {
             contents: entries.to_string(),
         };
 
-        let project_paths = [".github/", "main.rs"];
+        let project_paths = vec![".github/", "main.rs"];
+        let path_walker = PathWalker::with_paths(project_paths);
 
-        let path_walker = FakePathWalker::new(&project_paths);
-
-        let github_client = github::test_helpers::FakeGithubClient::builder()
+        let github_state = github::FakeGithubState::builder()
             .add_known_user("@ubiratansoares")
             .add_known_team("@dotanuki-labs/rustaceans")
             .build();
 
-        let validation = validation::validate_codeowners(codeowners_file, path_walker, github_client);
+        let consistency_checker = github::GithubConsistencyChecker::FakeChecks(github_state);
+        let validator = CodeOwnersValidator::new(consistency_checker, path_walker);
+
+        let validation = validator.validate_codeowners(codeowners_file).await;
 
         assertor::assert_that!(validation).is_ok();
     }
 
-    #[test]
-    fn should_detect_non_existing_github_user() {
+    #[tokio::test]
+    async fn should_detect_non_existing_github_user() {
         let entries = indoc! {"
             *.rs        @dotanuki-labs/rustaceans
             .github/    @ufs
@@ -304,15 +312,17 @@ mod consistency_validation_tests {
             contents: entries.to_string(),
         };
 
-        let project_paths = [".github/", "main.rs"];
+        let project_paths = vec![".github/", "main.rs"];
+        let path_walker = PathWalker::with_paths(project_paths);
 
-        let path_walker = FakePathWalker::new(&project_paths);
-
-        let github_client = github::test_helpers::FakeGithubClient::builder()
+        let github_state = github::FakeGithubState::builder()
             .add_known_team("@dotanuki-labs/rustaceans")
             .build();
 
-        let validation = validation::validate_codeowners(codeowners_file, path_walker, github_client);
+        let consistency_checker = github::GithubConsistencyChecker::FakeChecks(github_state);
+        let validator = CodeOwnersValidator::new(consistency_checker, path_walker);
+
+        let validation = validator.validate_codeowners(codeowners_file).await;
 
         let user_not_found = ValidationDiagnostic::builder()
             .kind(DiagnosticKindFactory::user_does_not_belong_to_organization("ufs"))
@@ -324,8 +334,8 @@ mod consistency_validation_tests {
         assertor::assert_that!(validation.into()).is_equal_to(expected);
     }
 
-    #[test]
-    fn should_detect_non_existing_github_team() {
+    #[tokio::test]
+    async fn should_detect_non_existing_github_team() {
         let entries = indoc! {"
             *.rs        @dotanuki-labs/rustaceans
             docs/       @dotanuki-labs/writers
@@ -337,16 +347,18 @@ mod consistency_validation_tests {
             contents: entries.to_string(),
         };
 
-        let project_paths = [".github/", "docs/", "main.rs"];
+        let project_paths = vec![".github/", "docs/", "main.rs"];
+        let path_walker = PathWalker::with_paths(project_paths);
 
-        let path_walker = FakePathWalker::new(&project_paths);
-
-        let github_client = github::test_helpers::FakeGithubClient::builder()
+        let github_state = github::FakeGithubState::builder()
             .add_known_team("@dotanuki-labs/rustaceans")
             .add_known_team("@dotanuki-labs/writers")
             .build();
 
-        let validation = validation::validate_codeowners(codeowners_file, path_walker, github_client);
+        let consistency_checker = github::GithubConsistencyChecker::FakeChecks(github_state);
+        let validator = CodeOwnersValidator::new(consistency_checker, path_walker);
+
+        let validation = validator.validate_codeowners(codeowners_file).await;
 
         let user_not_found = ValidationDiagnostic::builder()
             .kind(DiagnosticKindFactory::team_does_not_exist("dotanuki-labs", "devops"))

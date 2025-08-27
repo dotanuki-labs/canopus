@@ -14,14 +14,16 @@ license.workspace = true
 anyhow.workspace = true
 better-panic.workspace = true
 clap = { workspace = true, features = ["derive"] }
-env_logger.workspace = true
 email_address.workspace = true
+env_logger.workspace = true
+futures.workspace = true
 globset.workspace = true
 ignore.workspace = true
 itertools.workspace = true
 human-panic.workspace = true
 lazy-regex.workspace = true
 log.workspace = true
+tokio.workspace = true
 
 [dev-dependencies]
 assert_cmd.workspace = true
