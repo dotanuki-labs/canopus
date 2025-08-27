@@ -7,6 +7,8 @@ use crate::core::models::codeowners::CodeOwnersFile;
 use crate::features::validation::CodeOwnersValidator;
 use crate::infra::github::GithubConsistencyChecker;
 use crate::infra::paths;
+use octorust::Client;
+use octorust::auth::Credentials;
 use std::fmt::{Display, Formatter};
 use std::path::PathBuf;
 
@@ -24,12 +26,18 @@ impl Display for RequestedFeature {
         formatter.write_str(formatted)
     }
 }
+
 pub async fn execute(requested: RequestedFeature) -> anyhow::Result<()> {
     match requested {
         RequestedFeature::ValidateCodeowners(project_path) => {
             let codeowners_file = CodeOwnersFile::try_from(project_path.clone())?;
             let path_walker = paths::PathWalker::GitAware(codeowners_file.path.clone());
-            let consistency_checker = GithubConsistencyChecker::ApiBased;
+
+            let user_agent = format!("{}/{}", env!("CARGO_PKG_NAME"), env!("CARGO_PKG_VERSION"));
+            let github_token = std::env::var("GITHUB_TOKEN").unwrap_or("github-pat".to_string());
+            let github_client = Client::new(user_agent, Credentials::Token(github_token))?;
+
+            let consistency_checker = GithubConsistencyChecker::ApiBased(github_client);
             let validator = CodeOwnersValidator::new(consistency_checker, path_walker);
             validator.validate_codeowners(codeowners_file).await
         },

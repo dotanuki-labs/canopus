@@ -63,6 +63,9 @@ jobs:
       - name: Project Checkout
         uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
 
+      - name: Setup CI
+        uses: ./.github/actions/setup-rust
+
       - name: Inspect and lint source files
         run: cargo xtasks sources
 
@@ -75,6 +78,8 @@ jobs:
 
       - name: Setup CI
         uses: ./.github/actions/setup-rust
+        with:
+          install-extra-tools: true
 
       - name: Run project tests
         run: cargo xtasks tests
