@@ -4,54 +4,33 @@
 use ignore::WalkBuilder;
 use std::path::PathBuf;
 
-pub trait PathWalker {
+pub trait DirWalking {
     fn walk(&self) -> Vec<PathBuf>;
 }
 
-pub struct GitAwarePathWalker {
-    origin: PathBuf,
+pub enum PathWalker {
+    GitAware(PathBuf),
+    #[cfg(test)]
+    FakePaths(Vec<String>),
 }
 
-impl GitAwarePathWalker {
-    pub fn new(origin: PathBuf) -> Self {
-        Self { origin }
-    }
-}
-
-impl PathWalker for GitAwarePathWalker {
+impl DirWalking for PathWalker {
     fn walk(&self) -> Vec<PathBuf> {
-        WalkBuilder::new(&self.origin)
-            .build()
-            .filter_map(|entry| entry.ok())
-            .map(|entry| entry.path().to_path_buf())
-            .collect::<Vec<_>>()
+        match self {
+            PathWalker::GitAware(origin) => WalkBuilder::new(origin)
+                .build()
+                .filter_map(|entry| entry.ok())
+                .map(|entry| entry.path().to_path_buf())
+                .collect::<Vec<_>>(),
+            #[cfg(test)]
+            PathWalker::FakePaths(paths) => paths.clone().into_iter().map(PathBuf::from).collect(),
+        }
     }
 }
 
-#[cfg(test)]
-pub mod helpers {
-    use crate::infra::paths::PathWalker;
-    use std::path::PathBuf;
-
-    pub struct FakePathWalker {
-        raw_paths: Vec<String>,
-    }
-
-    impl FakePathWalker {
-        pub fn no_walking() -> Self {
-            Self::new(&[])
-        }
-
-        pub fn new(raw: &[&str]) -> Self {
-            Self {
-                raw_paths: raw.iter().map(|s| s.to_string()).collect(),
-            }
-        }
-    }
-
-    impl PathWalker for FakePathWalker {
-        fn walk(&self) -> Vec<PathBuf> {
-            self.raw_paths.clone().into_iter().map(PathBuf::from).collect()
-        }
+impl PathWalker {
+    #[cfg(test)]
+    pub fn with_paths(paths: Vec<&str>) -> Self {
+        PathWalker::FakePaths(paths.into_iter().map(String::from).collect())
     }
 }

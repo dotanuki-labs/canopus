@@ -4,109 +4,96 @@
 use crate::core::errors::ConsistencyIssue;
 use crate::core::models::handles::{GithubIdentityHandle, GithubTeamHandle};
 
-pub trait GithubClient {
-    fn check_github_identity(&self, identity: &GithubIdentityHandle) -> Result<(), ConsistencyIssue>;
+pub trait CheckGithubConsistency {
+    async fn github_identity(&self, identity: &GithubIdentityHandle) -> Result<(), ConsistencyIssue>;
 
-    fn check_github_team(&self, team: &GithubTeamHandle) -> Result<(), ConsistencyIssue>;
+    async fn github_team(&self, team: &GithubTeamHandle) -> Result<(), ConsistencyIssue>;
 }
 
-pub struct GithubRestClient;
-
-impl GithubRestClient {
-    pub fn new() -> Self {
-        Self {}
-    }
+pub enum GithubConsistencyChecker {
+    ApiBased,
+    #[cfg(test)]
+    FakeChecks(FakeGithubState),
+    #[cfg(test)]
+    ConsistentState,
 }
 
-impl GithubClient for GithubRestClient {
-    fn check_github_identity(&self, _: &GithubIdentityHandle) -> Result<(), ConsistencyIssue> {
-        Ok(())
+#[allow(unused_variables)]
+impl CheckGithubConsistency for GithubConsistencyChecker {
+    async fn github_identity(&self, identity: &GithubIdentityHandle) -> Result<(), ConsistencyIssue> {
+        match self {
+            GithubConsistencyChecker::ApiBased => Ok(()),
+            #[cfg(test)]
+            GithubConsistencyChecker::FakeChecks(fake) => {
+                if fake.known_users.contains(&identity.inner().to_string()) {
+                    return Ok(());
+                };
+
+                Err(ConsistencyIssue::UserDoesNotBelongToOrganization(identity.clone()))
+            },
+            #[cfg(test)]
+            GithubConsistencyChecker::ConsistentState => Ok(()),
+        }
     }
 
-    fn check_github_team(&self, _: &GithubTeamHandle) -> Result<(), ConsistencyIssue> {
-        Ok(())
+    async fn github_team(&self, team: &GithubTeamHandle) -> Result<(), ConsistencyIssue> {
+        match self {
+            GithubConsistencyChecker::ApiBased => Ok(()),
+            #[cfg(test)]
+            GithubConsistencyChecker::FakeChecks(state) => {
+                let formatted = format!("{}/{}", &team.organization.inner(), &team.name);
+                if state.known_teams.contains(&formatted) {
+                    return Ok(());
+                };
+
+                Err(ConsistencyIssue::TeamDoesNotExistWithinOrganization(team.clone()))
+            },
+            #[cfg(test)]
+            GithubConsistencyChecker::ConsistentState => Ok(()),
+        }
     }
 }
 
 #[cfg(test)]
-pub mod test_helpers {
-    use crate::core::models::handles::{GithubIdentityHandle, GithubTeamHandle};
-    use crate::infra::github::{ConsistencyIssue, GithubClient};
+pub struct FakeGithubState {
+    known_users: Vec<String>,
+    known_teams: Vec<String>,
+}
 
-    pub struct AllConsistentGithubClient;
+#[cfg(test)]
+#[derive(Default)]
+pub struct FakeGithubStateBuilder {
+    known_users: Vec<String>,
+    known_teams: Vec<String>,
+}
 
-    impl AllConsistentGithubClient {
-        pub fn new() -> Self {
-            Self {}
-        }
+#[cfg(test)]
+impl FakeGithubStateBuilder {
+    pub fn add_known_user(mut self, username: &str) -> Self {
+        self.known_users.push(username.replace("@", ""));
+        self
     }
 
-    impl GithubClient for AllConsistentGithubClient {
-        fn check_github_identity(&self, _: &GithubIdentityHandle) -> Result<(), ConsistencyIssue> {
-            Ok(())
-        }
-
-        fn check_github_team(&self, _: &GithubTeamHandle) -> Result<(), ConsistencyIssue> {
-            Ok(())
-        }
+    pub fn add_known_team(mut self, team: &str) -> Self {
+        self.known_teams.push(team.replace("@", ""));
+        self
     }
 
-    pub struct FakeGithubClient {
-        known_users: Vec<String>,
-        known_teams: Vec<String>,
+    pub fn build(self) -> FakeGithubState {
+        FakeGithubState::new(self.known_users, self.known_teams)
+    }
+}
+
+#[cfg(test)]
+impl FakeGithubState {
+    pub fn builder() -> FakeGithubStateBuilder {
+        FakeGithubStateBuilder::default()
     }
 
-    #[derive(Default)]
-    pub struct FakeGithubClientBuilder {
-        known_users: Vec<String>,
-        known_teams: Vec<String>,
-    }
-
-    impl FakeGithubClientBuilder {
-        pub fn add_known_user(mut self, username: &str) -> Self {
-            self.known_users.push(username.replace("@", ""));
-            self
-        }
-
-        pub fn add_known_team(mut self, team: &str) -> Self {
-            self.known_teams.push(team.replace("@", ""));
-            self
-        }
-
-        pub fn build(self) -> FakeGithubClient {
-            FakeGithubClient::new(self.known_users, self.known_teams)
-        }
-    }
-
-    impl FakeGithubClient {
-        pub fn builder() -> FakeGithubClientBuilder {
-            FakeGithubClientBuilder::default()
-        }
-
-        fn new(known_users: Vec<String>, known_teams: Vec<String>) -> Self {
-            Self {
-                known_users,
-                known_teams,
-            }
-        }
-    }
-
-    impl GithubClient for FakeGithubClient {
-        fn check_github_identity(&self, identity: &GithubIdentityHandle) -> Result<(), ConsistencyIssue> {
-            if self.known_users.contains(&identity.inner().to_string()) {
-                return Ok(());
-            };
-
-            Err(ConsistencyIssue::UserDoesNotBelongToOrganization(identity.clone()))
-        }
-
-        fn check_github_team(&self, team: &GithubTeamHandle) -> Result<(), ConsistencyIssue> {
-            let formatted = format!("{}/{}", &team.organization.inner(), &team.name);
-            if self.known_teams.contains(&formatted) {
-                return Ok(());
-            };
-
-            Err(ConsistencyIssue::TeamDoesNotExistWithinOrganization(team.clone()))
+    fn new(known_users: Vec<String>, known_teams: Vec<String>) -> Self {
+        Self {
+            known_users,
+            known_teams,
         }
     }
 }
