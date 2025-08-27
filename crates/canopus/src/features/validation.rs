@@ -191,6 +191,28 @@ impl CodeOwnersValidator {
                         format!("'{}' user does not belong to this organization", handle.inner()),
                     )
                 },
+                ConsistencyIssue::CannotVerifyUser(handle) => {
+                    let owner = Owner::GithubUser(handle.clone());
+                    let first_occurrence = code_owners.occurrences(&owner)[0];
+                    (
+                        issue,
+                        first_occurrence,
+                        format!("cannot confirm if user '{}' exists", handle.inner()),
+                    )
+                },
+                ConsistencyIssue::CannotVerifyTeam(handle) => {
+                    let owner = Owner::GithubTeam(handle.clone());
+                    let first_occurrence = code_owners.occurrences(&owner)[0];
+                    (
+                        issue,
+                        first_occurrence,
+                        format!(
+                            "cannot confirm whether '{}/{}' team exists",
+                            handle.organization.inner(),
+                            handle.name
+                        ),
+                    )
+                },
             })
             .map(|(issue, line, cause)| {
                 ValidationDiagnostic::builder()
