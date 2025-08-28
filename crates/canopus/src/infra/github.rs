@@ -2,8 +2,11 @@
 // SPDX-License-Identifier: MIT
 
 use crate::core::errors::ConsistencyIssue;
+use crate::core::errors::ConsistencyIssue::CannotListMembersInTheOrganization;
 use crate::core::models::handles::{GithubIdentityHandle, GithubTeamHandle};
-use octorust::{ClientError, StatusCode};
+use futures::TryFutureExt;
+use itertools::Itertools;
+use octorust::{ClientError, StatusCode, types};
 
 pub trait CheckGithubConsistency {
     async fn github_identity(&self, handle: &GithubIdentityHandle) -> Result<(), ConsistencyIssue>;
@@ -12,7 +15,10 @@ pub trait CheckGithubConsistency {
 }
 
 pub enum GithubConsistencyChecker {
-    ApiBased(octorust::Client),
+    ApiBased {
+        github_client: octorust::Client,
+        target_organization_name: String,
+    },
     #[cfg(test)]
     FakeChecks(FakeGithubState),
     #[cfg(test)]
@@ -20,24 +26,70 @@ pub enum GithubConsistencyChecker {
 }
 
 impl GithubConsistencyChecker {
-    async fn check_user_on_github(&self, github_client: &octorust::Client, user: &str) -> Result<(), ConsistencyIssue> {
+    async fn find_users_for_organization(
+        &self,
+        github_client: &octorust::Client,
+        organization: &str,
+    ) -> Result<Vec<GithubIdentityHandle>, ConsistencyIssue> {
+        let filter = types::OrgsListMembersFilter::All;
+        let role = types::OrgsListMembersRole::All;
+
+        let all_members = github_client
+            .orgs()
+            .list_all_members(organization, filter, role)
+            .map_err(|_| CannotListMembersInTheOrganization)
+            .await?;
+
+        let all_handles = all_members
+            .body
+            .into_iter()
+            .map(|user| GithubIdentityHandle::new(user.login))
+            .collect_vec();
+
+        Ok(all_handles)
+    }
+
+    async fn check_user_on_github(
+        &self,
+        github_client: &octorust::Client,
+        organization: &str,
+        user: &str,
+    ) -> Result<(), ConsistencyIssue> {
+        let users_in_organization = self.find_users_for_organization(github_client, organization).await?;
+
+        let target_user = GithubIdentityHandle::new(user.to_string());
+
+        let user_listed_in_organization = users_in_organization.contains(&target_user);
+
+        if user_listed_in_organization {
+            return Ok(());
+        }
+
         github_client
             .users()
             .get_by_username(user)
             .await
             .map_err(|incoming| {
                 log::error!("{}", incoming);
-                let user_handle = GithubIdentityHandle::new(user.to_owned());
+
+                let handle = target_user.clone();
+
                 let ClientError::HttpError { status, .. } = incoming else {
-                    return ConsistencyIssue::CannotVerifyUser(user_handle);
+                    return ConsistencyIssue::CannotVerifyUser(handle);
                 };
 
                 match status {
-                    StatusCode::NOT_FOUND => ConsistencyIssue::UserDoesNotExist(user_handle),
-                    _ => ConsistencyIssue::CannotVerifyUser(user_handle),
+                    StatusCode::NOT_FOUND => ConsistencyIssue::UserDoesNotExist(handle),
+                    _ => ConsistencyIssue::CannotVerifyUser(handle),
                 }
             })
-            .map(|_| ())
+            .map(|_| ())?;
+
+        if !user_listed_in_organization {
+            return Err(ConsistencyIssue::UserDoesNotBelongToOrganization(target_user));
+        };
+
+        Ok(())
     }
 
     async fn check_team_on_github(
@@ -98,8 +150,12 @@ impl GithubConsistencyChecker {
 impl CheckGithubConsistency for GithubConsistencyChecker {
     async fn github_identity(&self, identity: &GithubIdentityHandle) -> Result<(), ConsistencyIssue> {
         match self {
-            GithubConsistencyChecker::ApiBased(github_client) => {
-                self.check_user_on_github(github_client, identity.inner()).await
+            GithubConsistencyChecker::ApiBased {
+                github_client,
+                target_organization_name,
+            } => {
+                self.check_user_on_github(github_client, target_organization_name, identity.inner())
+                    .await
             },
             #[cfg(test)]
             GithubConsistencyChecker::FakeChecks(state) => self.check_registered_fake_user(state, identity.inner()),
@@ -110,7 +166,10 @@ impl CheckGithubConsistency for GithubConsistencyChecker {
 
     async fn github_team(&self, handle: &GithubTeamHandle) -> Result<(), ConsistencyIssue> {
         match self {
-            GithubConsistencyChecker::ApiBased(github_client) => {
+            GithubConsistencyChecker::ApiBased {
+                github_client,
+                target_organization_name: _target_organization_name,
+            } => {
                 self.check_team_on_github(github_client, handle.organization.inner(), handle.name.as_str())
                     .await
             },
@@ -174,9 +233,10 @@ mod tests {
     use crate::core::models::handles::{GithubIdentityHandle, GithubTeamHandle};
     use crate::infra::github::{CheckGithubConsistency, GithubConsistencyChecker};
     use assertor::{EqualityAssertion, ResultAssertion};
-    use httpmock::MockServer;
+    use httpmock::{MockServer, Then, When};
+    use itertools::Itertools;
     use octorust::auth::Credentials;
-    use octorust::types::UsersGetByUsernameResponseOneOf;
+    use rand::random;
     use reqwest_retry::policies;
 
     fn create_github_client(base_url: String) -> octorust::Client {
@@ -194,121 +254,234 @@ mod tests {
         github_client
     }
 
-    fn create_github_user(username: &str) -> octorust::types::PublicUser {
-        octorust::types::PublicUser {
-            avatar_url: "https://avatars.githubusercontent.com/u/123456789?v=4".to_string(),
-            bio: "".to_string(),
-            blog: "".to_string(),
-            collaborators: 0,
-            company: "".to_string(),
-            created_at: None,
-            disk_usage: 0,
-            email: "".to_string(),
-            events_url: "".to_string(),
-            followers: 0,
-            followers_url: "".to_string(),
-            following: 0,
-            following_url: "".to_string(),
-            gists_url: "".to_string(),
-            gravatar_id: "".to_string(),
-            hireable: false,
-            html_url: "".to_string(),
-            id: 123456789,
-            location: "".to_string(),
-            login: username.to_string(),
-            name: username.to_string(),
-            node_id: "".to_string(),
-            organizations_url: "".to_string(),
-            owned_private_repos: 0,
-            plan: None,
-            private_gists: 0,
-            public_gists: 0,
-            public_repos: 0,
-            received_events_url: "".to_string(),
-            repos_url: "".to_string(),
-            site_admin: false,
-            starred_url: "".to_string(),
-            subscriptions_url: "".to_string(),
-            suspended_at: None,
-            total_private_repos: 0,
-            twitter_username: "".to_string(),
-            type_: "".to_string(),
-            updated_at: None,
-            url: "".to_string(),
+    fn responds_with_existing_github_user(username: &str) -> impl FnOnce(When, Then) {
+        move |when, then| {
+            let user_id = random::<u64>();
+            let user = octorust::types::PublicUser {
+                avatar_url: format!("https://avatars.githubusercontent.com/u/{}?v=4", user_id),
+                bio: "".to_string(),
+                blog: "".to_string(),
+                collaborators: 0,
+                company: "".to_string(),
+                created_at: None,
+                disk_usage: 0,
+                email: "".to_string(),
+                events_url: "".to_string(),
+                followers: 0,
+                followers_url: "".to_string(),
+                following: 0,
+                following_url: "".to_string(),
+                gists_url: "".to_string(),
+                gravatar_id: "".to_string(),
+                hireable: false,
+                html_url: "".to_string(),
+                id: user_id as i64,
+                location: "".to_string(),
+                login: username.to_string(),
+                name: username.to_string(),
+                node_id: random::<u64>().to_string(),
+                organizations_url: "".to_string(),
+                owned_private_repos: 0,
+                plan: None,
+                private_gists: 0,
+                public_gists: 0,
+                public_repos: 0,
+                received_events_url: "".to_string(),
+                repos_url: "".to_string(),
+                site_admin: false,
+                starred_url: "".to_string(),
+                subscriptions_url: "".to_string(),
+                suspended_at: None,
+                total_private_repos: 0,
+                twitter_username: "".to_string(),
+                type_: "".to_string(),
+                updated_at: None,
+                url: "".to_string(),
+            };
+
+            let response = serde_json::to_string(&user).unwrap();
+
+            when.method("GET").path(format!("/users/{}", username));
+
+            then.status(200)
+                .header("content-type", "application/json; charset=UTF-8")
+                .body(response);
+        }
+    }
+
+    fn responds_with_user_not_found_on_github(username: &str) -> impl FnOnce(When, Then) {
+        move |when, then| {
+            when.method("GET").path(format!("/users/{}", username));
+
+            then.status(404)
+                .header("content-type", "application/json; charset=UTF-8")
+                .body("not found");
+        }
+    }
+
+    fn responds_with_team_not_found(organization: &str, team_name: &str) -> impl FnOnce(When, Then) {
+        move |when, then| {
+            when.method("GET")
+                .path(format!("/orgs/{}/teams/{}", organization, team_name));
+
+            then.status(404)
+                .header("content-type", "application/json; charset=UTF-8")
+                .body("not found");
+        }
+    }
+
+    fn responds_with_internal_error(api_path: &str) -> impl FnOnce(When, Then) {
+        move |when, then| {
+            when.method("GET").path(api_path);
+
+            then.status(500)
+                .header("content-type", "application/json; charset=UTF-8")
+                .body("Angry unicorn");
+        }
+    }
+
+    fn responds_with_members_of_an_organization(organization: &str, usernames: Vec<&str>) -> impl FnOnce(When, Then) {
+        move |when, then| {
+            let users = usernames
+                .into_iter()
+                .map(|username| {
+                    let user_id = random::<u64>();
+
+                    octorust::types::SimpleUser {
+                        avatar_url: format!("https://avatars.githubusercontent.com/u/{}?v=4", user_id),
+                        email: "".to_string(),
+                        events_url: "".to_string(),
+                        followers_url: "".to_string(),
+                        following_url: "".to_string(),
+                        gists_url: "".to_string(),
+                        gravatar_id: "".to_string(),
+                        html_url: "".to_string(),
+                        id: user_id as i64,
+                        login: username.to_string(),
+                        name: "".to_string(),
+                        node_id: "".to_string(),
+                        organizations_url: format!("https://github.com/{}", organization),
+                        received_events_url: "".to_string(),
+                        repos_url: "".to_string(),
+                        site_admin: false,
+                        starred_at: "".to_string(),
+                        starred_url: "".to_string(),
+                        subscriptions_url: "".to_string(),
+                        type_: "".to_string(),
+                        url: "".to_string(),
+                    }
+                })
+                .collect_vec();
+
+            when.method("GET").path(format!("/orgs/{}/members", organization));
+
+            then.status(200)
+                .header("content-type", "application/json; charset=UTF-8")
+                .body(serde_json::to_string(&users).unwrap());
         }
     }
 
     #[tokio::test]
-    async fn should_report_user_found() {
+    async fn should_report_user_found_within_organization_members() {
         let mock_server = MockServer::start();
 
-        let user = UsersGetByUsernameResponseOneOf::PublicUser(create_github_user("ubiratansoares"));
+        let github_organization = "dotanuki-labs";
+        let members = vec!["ubiratansoares", "dotanuki-bot"];
 
-        let existing_public_user = mock_server.mock(|when, then| {
-            when.method("GET").path("/users/ubiratansoares");
+        let returns_members = responds_with_members_of_an_organization(github_organization, members);
 
-            then.status(200)
-                .header("content-type", "application/json; charset=UTF-8")
-                .body(serde_json::to_string(&user).unwrap());
-        });
+        let organization_members = mock_server.mock(returns_members);
 
-        let github_client = create_github_client(mock_server.base_url());
-        let consistency_checker = GithubConsistencyChecker::ApiBased(github_client);
+        let consistency_checker = GithubConsistencyChecker::ApiBased {
+            github_client: create_github_client(mock_server.base_url()),
+            target_organization_name: "dotanuki-labs".to_string(),
+        };
 
         let identity = GithubIdentityHandle::new("ubiratansoares".to_string());
         let check = consistency_checker.github_identity(&identity).await;
 
-        existing_public_user.assert();
+        organization_members.assert();
         assertor::assert_that!(check).is_ok();
+    }
+
+    #[tokio::test]
+    async fn should_report_user_outside_github_organization() {
+        let mock_server = MockServer::start();
+
+        let github_organization = "dotanuki-labs";
+        let members = vec!["ubiratansoares", "dotanuki-bot"];
+        let outside_organization = "itto-ogami";
+
+        let returns_members = responds_with_members_of_an_organization(github_organization, members);
+
+        let returns_user_on_github = responds_with_existing_github_user(outside_organization);
+
+        let organization_members = mock_server.mock(returns_members);
+        let exists_on_github = mock_server.mock(returns_user_on_github);
+
+        let consistency_checker = GithubConsistencyChecker::ApiBased {
+            github_client: create_github_client(mock_server.base_url()),
+            target_organization_name: "dotanuki-labs".to_string(),
+        };
+
+        let identity = GithubIdentityHandle::new(outside_organization.to_string());
+        let check = consistency_checker.github_identity(&identity).await;
+
+        let expected = ConsistencyIssue::UserDoesNotBelongToOrganization(identity);
+
+        organization_members.assert();
+        exists_on_github.assert();
+        assertor::assert_that!(check).is_equal_to(Err(expected));
     }
 
     #[tokio::test]
     async fn should_report_user_not_found() {
         let mock_server = MockServer::start();
 
-        let user_not_found = mock_server.mock(|when, then| {
-            when.method("GET").path("/users/ubiratansoares");
+        let github_organization = "dotanuki-labs";
+        let members = vec!["ubiratansoares", "dotanuki-bot"];
+        let not_on_github = "itto-ogami";
 
-            then.status(404)
-                .header("content-type", "application/json; charset=UTF-8")
-                .body("not found");
-        });
+        let returns_members = responds_with_members_of_an_organization(github_organization, members);
 
-        let github_client = create_github_client(mock_server.base_url());
-        let consistency_checker = GithubConsistencyChecker::ApiBased(github_client);
+        let returns_user_not_found = responds_with_user_not_found_on_github(not_on_github);
 
-        let identity = GithubIdentityHandle::new("ubiratansoares".to_string());
+        let organization_members = mock_server.mock(returns_members);
+        let user_not_found = mock_server.mock(returns_user_not_found);
+
+        let consistency_checker = GithubConsistencyChecker::ApiBased {
+            github_client: create_github_client(mock_server.base_url()),
+            target_organization_name: "dotanuki-labs".to_string(),
+        };
+
+        let identity = GithubIdentityHandle::new(not_on_github.to_string());
         let check = consistency_checker.github_identity(&identity).await;
 
         let expected = ConsistencyIssue::UserDoesNotExist(identity);
 
+        organization_members.assert();
         user_not_found.assert();
         assertor::assert_that!(check).is_equal_to(Err(expected));
     }
 
     #[tokio::test]
     async fn should_report_team_not_found() {
-        let existing_organization_name = "dotanuki-labs";
-        let missing_team_name = "crabbers";
-
         let mock_server = MockServer::start();
 
-        let team_not_found = mock_server.mock(|when, then| {
-            when.method("GET").path(format!(
-                "/orgs/{}/teams/{}",
-                existing_organization_name, missing_team_name
-            ));
+        let github_organization = "dotanuki-labs";
+        let undefined_team = "crabbers";
 
-            then.status(404)
-                .header("content-type", "application/json; charset=UTF-8")
-                .body("not found");
-        });
+        let returns_not_found = responds_with_team_not_found(github_organization, undefined_team);
 
-        let github_client = create_github_client(mock_server.base_url());
-        let consistency_checker = GithubConsistencyChecker::ApiBased(github_client);
+        let team_not_found = mock_server.mock(returns_not_found);
 
-        let organization = GithubIdentityHandle::new(existing_organization_name.to_string());
-        let team_handle = GithubTeamHandle::new(organization, missing_team_name.to_string());
+        let consistency_checker = GithubConsistencyChecker::ApiBased {
+            github_client: create_github_client(mock_server.base_url()),
+            target_organization_name: "dotanuki-labs".to_string(),
+        };
+
+        let organization = GithubIdentityHandle::new(github_organization.to_string());
+        let team_handle = GithubTeamHandle::new(organization, undefined_team.to_string());
         let check = consistency_checker.github_team(&team_handle).await;
 
         let expected = ConsistencyIssue::TeamDoesNotExistWithinOrganization(team_handle);
@@ -321,21 +494,18 @@ mod tests {
     async fn should_report_user_not_verified() {
         let mock_server = MockServer::start();
 
-        let internal_server_error = mock_server.mock(|when, then| {
-            when.method("GET").path("/users/ubiratansoares");
+        let returns_internal_error = responds_with_internal_error("/orgs/dotanuki/members");
+        let internal_server_error = mock_server.mock(returns_internal_error);
 
-            then.status(500)
-                .header("content-type", "application/json; charset=UTF-8")
-                .body("Angry unicorns on fire!");
-        });
-
-        let github_client = create_github_client(mock_server.base_url());
-        let consistency_checker = GithubConsistencyChecker::ApiBased(github_client);
+        let consistency_checker = GithubConsistencyChecker::ApiBased {
+            github_client: create_github_client(mock_server.base_url()),
+            target_organization_name: "dotanuki".to_string(),
+        };
 
         let identity = GithubIdentityHandle::new("ubiratansoares".to_string());
         let check = consistency_checker.github_identity(&identity).await;
 
-        let expected = ConsistencyIssue::CannotVerifyUser(identity);
+        let expected = ConsistencyIssue::CannotListMembersInTheOrganization;
 
         internal_server_error.assert();
         assertor::assert_that!(check).is_equal_to(Err(expected));
@@ -344,25 +514,17 @@ mod tests {
     #[tokio::test]
     async fn should_report_team_not_verified() {
         let mock_server = MockServer::start();
-        let existing_organization_name = "dotanuki-labs";
-        let missing_team_name = "crabbers";
 
-        let internal_server_error = mock_server.mock(|when, then| {
-            when.method("GET").path(format!(
-                "/orgs/{}/teams/{}",
-                existing_organization_name, missing_team_name
-            ));
+        let returns_internal_error = responds_with_internal_error("/orgs/dotanuki/teams/crabbers");
+        let internal_server_error = mock_server.mock(returns_internal_error);
 
-            then.status(500)
-                .header("content-type", "application/json; charset=UTF-8")
-                .body("Angry unicorns on fire!");
-        });
+        let consistency_checker = GithubConsistencyChecker::ApiBased {
+            github_client: create_github_client(mock_server.base_url()),
+            target_organization_name: "dotanuki-labs".to_string(),
+        };
 
-        let github_client = create_github_client(mock_server.base_url());
-        let consistency_checker = GithubConsistencyChecker::ApiBased(github_client);
-
-        let organization = GithubIdentityHandle::new(existing_organization_name.to_string());
-        let team_handle = GithubTeamHandle::new(organization, missing_team_name.to_string());
+        let organization = GithubIdentityHandle::new("dotanuki".to_string());
+        let team_handle = GithubTeamHandle::new(organization, "crabbers".to_string());
         let check = consistency_checker.github_team(&team_handle).await;
 
         let expected = ConsistencyIssue::CannotVerifyTeam(team_handle);

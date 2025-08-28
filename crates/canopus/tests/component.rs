@@ -19,7 +19,9 @@ fn validate_codeowners(contents: &str) -> Assert {
     fs::write(&target, contents).expect("Failed to write content to CODEOWNERS file");
     let project_path = target.parent().unwrap().to_str().unwrap();
 
-    sut().args(["validate", "-p", project_path]).assert()
+    sut()
+        .args(["validate", "-p", project_path, "-o", "dotanuki-labs"])
+        .assert()
 }
 
 #[test]
@@ -27,7 +29,9 @@ fn should_detect_no_codeowners() {
     let temp_dir = TempDir::new().expect("Cant create temp dir");
 
     let project_path = temp_dir.path().to_str().unwrap();
-    let execution = sut().args(["validate", "-p", project_path]).assert();
+    let execution = sut()
+        .args(["validate", "-p", project_path, "-o", "dotanuki-labs"])
+        .assert();
 
     execution
         .failure()
@@ -52,7 +56,9 @@ fn should_detect_multiple_codeowners() {
     fs::write(&another_config, codeowners).expect("failed to write content to CODEOWNERS file");
 
     let project_path = some_config.parent().unwrap().to_str().unwrap();
-    let execution = sut().args(["validate", "-p", project_path]).assert();
+    let execution = sut()
+        .args(["validate", "-p", project_path, "-o", "dotanuki-labs"])
+        .assert();
 
     execution
         .failure()

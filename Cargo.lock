@@ -475,6 +475,7 @@ dependencies = [
  "log",
  "octorust",
  "predicates",
+ "rand 0.9.2",
  "reqwest",
  "reqwest-middleware",
  "reqwest-retry",

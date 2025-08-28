@@ -14,13 +14,13 @@ use std::path::PathBuf;
 
 #[derive(Debug)]
 pub enum RequestedFeature {
-    ValidateCodeowners(PathBuf),
+    ValidateCodeowners(PathBuf, String),
 }
 
 impl Display for RequestedFeature {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
         let formatted = match self {
-            RequestedFeature::ValidateCodeowners(_) => "Validates the CODEOWNERS configuration for a project",
+            RequestedFeature::ValidateCodeowners(_, _) => "Validates the CODEOWNERS configuration for a project",
         };
 
         formatter.write_str(formatted)
@@ -29,15 +29,18 @@ impl Display for RequestedFeature {
 
 pub async fn execute(requested: RequestedFeature) -> anyhow::Result<()> {
     match requested {
-        RequestedFeature::ValidateCodeowners(project_path) => {
+        RequestedFeature::ValidateCodeowners(project_path, organization_name) => {
             let codeowners_file = CodeOwnersFile::try_from(project_path.clone())?;
             let path_walker = paths::PathWalker::GitAware(codeowners_file.path.clone());
 
             let user_agent = format!("{}/{}", env!("CARGO_PKG_NAME"), env!("CARGO_PKG_VERSION"));
             let github_token = std::env::var("GITHUB_TOKEN").unwrap_or("github-pat".to_string());
-            let github_client = Client::new(user_agent, Credentials::Token(github_token))?;
 
-            let consistency_checker = GithubConsistencyChecker::ApiBased(github_client);
+            let consistency_checker = GithubConsistencyChecker::ApiBased {
+                github_client: Client::new(user_agent, Credentials::Token(github_token))?,
+                target_organization_name: organization_name,
+            };
+
             let validator = CodeOwnersValidator::new(consistency_checker, path_walker);
             validator.validate_codeowners(codeowners_file).await
         },
