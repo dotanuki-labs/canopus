@@ -12,6 +12,8 @@ use std::path::PathBuf;
 struct ValidateArguments {
     #[arg(short, long, help = "Path pointing to project root")]
     pub path: PathBuf,
+    #[arg(short, long, help = "The name of the Github organization a project belongs this")]
+    pub organization: String,
 }
 
 #[derive(Parser)]
@@ -32,7 +34,7 @@ pub fn parse_arguments() -> anyhow::Result<RequestedFeature> {
     let cli = CliParser::parse();
 
     let execution = match cli.command {
-        Validate(args) => ValidateCodeowners(args.path),
+        Validate(args) => ValidateCodeowners(args.path, args.organization),
     };
 
     Ok(execution)

@@ -13,6 +13,7 @@ pub enum StructuralIssue {
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum ConsistencyIssue {
+    CannotListMembersInTheOrganization,
     CannotVerifyUser(GithubIdentityHandle),
     CannotVerifyTeam(GithubTeamHandle),
     UserDoesNotExist(GithubIdentityHandle),

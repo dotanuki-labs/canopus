@@ -127,6 +127,7 @@ impl CodeOwnersValidator {
         Ok(())
     }
 
+    #[allow(clippy::todo)]
     async fn check_github_consistency(&self, code_owners: &CodeOwners) -> anyhow::Result<()> {
         let unique_ownerships = code_owners.unique_owners();
 
@@ -212,6 +213,9 @@ impl CodeOwnersValidator {
                             handle.name
                         ),
                     )
+                },
+                ConsistencyIssue::CannotListMembersInTheOrganization => {
+                    todo!("Missing this implementation because we dont have a line number in this case")
                 },
             })
             .map(|(issue, line, cause)| {
