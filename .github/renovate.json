@@ -64,7 +64,7 @@
             "registryUrlTemplate": "https://ghcr.io",
             "depNameTemplate": "dotanuki-labs/callinectes",
             "managerFilePatterns": [
-                "/crates/xtasks/utils\\.rs$/"
+                "/crates/xtasks/src/utils\\.rs$/"
             ],
             "matchStrings": [
                 "static CALLINECTES_DOCKER_DIGEST: &str = \"(?<currentDigest>sha256:[a-f0-9]+)\""
