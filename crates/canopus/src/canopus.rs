@@ -1,58 +1,55 @@
 // Copyright 2025 Dotanuki Labs
 // SPDX-License-Identifier: MIT
 
-mod validation;
+pub mod validation;
 
-use crate::core::models::codeowners::CodeOwnersFile;
-use crate::features::validation::CodeOwnersValidator;
-use crate::infra::github::GithubConsistencyChecker;
-use crate::infra::paths;
-use octorust::Client;
-use octorust::auth::Credentials;
+use crate::canopus::validation::CodeOwnersValidator;
+use crate::core::models::codeowners::CodeOwnersAttributes;
 use std::fmt::{Display, Formatter};
 use std::path::PathBuf;
 
 #[derive(Debug)]
-pub enum RequestedFeature {
+pub enum CanopusCommand {
     ValidateCodeowners(PathBuf, String),
 }
 
-impl Display for RequestedFeature {
+impl Display for CanopusCommand {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
         let formatted = match self {
-            RequestedFeature::ValidateCodeowners(_, _) => "Validates the CODEOWNERS configuration for a project",
+            CanopusCommand::ValidateCodeowners(_, _) => "Validates the CODEOWNERS configuration for a project",
         };
 
         formatter.write_str(formatted)
     }
 }
 
-pub async fn execute(requested: RequestedFeature) -> anyhow::Result<()> {
-    match requested {
-        RequestedFeature::ValidateCodeowners(project_path, organization_name) => {
-            let codeowners_file = CodeOwnersFile::try_from(project_path.clone())?;
-            let path_walker = paths::PathWalker::GitAware(codeowners_file.path.clone());
+pub struct Canopus {
+    codeowners_validator: CodeOwnersValidator,
+}
 
-            let user_agent = format!("{}/{}", env!("CARGO_PKG_NAME"), env!("CARGO_PKG_VERSION"));
-            let github_token = std::env::var("GITHUB_TOKEN").unwrap_or("github-pat".to_string());
+impl Canopus {
+    pub async fn execute(&self, requested: CanopusCommand) -> anyhow::Result<()> {
+        match requested {
+            CanopusCommand::ValidateCodeowners(project_path, organization_name) => {
+                let codeowners_attributes = CodeOwnersAttributes::try_from(project_path)?;
+                self.codeowners_validator
+                    .validate_codeowners(codeowners_attributes, &organization_name)
+                    .await
+            },
+        }
+    }
 
-            let consistency_checker = GithubConsistencyChecker::ApiBased {
-                github_client: Client::new(user_agent, Credentials::Token(github_token))?,
-                provided_organization_name: organization_name,
-            };
-
-            let validator = CodeOwnersValidator::new(consistency_checker, path_walker);
-            validator.validate_codeowners(codeowners_file).await
-        },
+    pub fn new(codeowners_validator: CodeOwnersValidator) -> Self {
+        Self { codeowners_validator }
     }
 }
 
 #[cfg(test)]
 mod structural_validation_tests {
+    use crate::canopus::validation::CodeOwnersValidator;
     use crate::core::errors::test_helpers::DiagnosticKindFactory;
     use crate::core::errors::{CodeownersValidationError, ValidationDiagnostic};
-    use crate::core::models::codeowners::CodeOwnersFile;
-    use crate::features::validation::CodeOwnersValidator;
+    use crate::core::models::codeowners::CodeOwnersAttributes;
     use crate::infra::github;
     use crate::infra::paths::PathWalker;
     use assertor::{EqualityAssertion, ResultAssertion};
@@ -66,8 +63,9 @@ mod structural_validation_tests {
             *.rs    @org/rustaceans
         "};
 
-        let codeowners_file = CodeOwnersFile {
-            path: PathBuf::from("path/to/.github/CODEOWNERS"),
+        let codeowners_file = CodeOwnersAttributes {
+            project_root: PathBuf::from("path/to"),
+            location: PathBuf::from("path/to/.github/CODEOWNERS"),
             contents: entries.to_string(),
         };
 
@@ -76,7 +74,7 @@ mod structural_validation_tests {
         let consistency_checker = GithubConsistencyChecker::ConsistentState;
         let validator = CodeOwnersValidator::new(consistency_checker, path_walker);
 
-        let validation = validator.validate_codeowners(codeowners_file).await;
+        let validation = validator.validate_codeowners(codeowners_file, "dotanuki-labs").await;
 
         assertor::assert_that!(validation).is_ok();
     }
@@ -87,8 +85,9 @@ mod structural_validation_tests {
             *.rs    org/rustaceans
         "};
 
-        let codeowners_file = CodeOwnersFile {
-            path: PathBuf::from("path/to/.github/CODEOWNERS"),
+        let codeowners_file = CodeOwnersAttributes {
+            project_root: PathBuf::from("path/to"),
+            location: PathBuf::from("path/to/.github/CODEOWNERS"),
             contents: entries.to_string(),
         };
 
@@ -96,7 +95,7 @@ mod structural_validation_tests {
         let consistency_checker = GithubConsistencyChecker::ConsistentState;
         let validator = CodeOwnersValidator::new(consistency_checker, path_walker);
 
-        let validation = validator.validate_codeowners(codeowners_file).await;
+        let validation = validator.validate_codeowners(codeowners_file, "dotanuki-labs").await;
 
         let issue = ValidationDiagnostic::builder()
             .kind(DiagnosticKindFactory::invalid_syntax())
@@ -115,8 +114,9 @@ mod structural_validation_tests {
             [z-a]*.rs    @org/crabbers
         "};
 
-        let codeowners_file = CodeOwnersFile {
-            path: PathBuf::from("path/to/.github/CODEOWNERS"),
+        let codeowners_file = CodeOwnersAttributes {
+            project_root: PathBuf::from("path/to"),
+            location: PathBuf::from("path/to/.github/CODEOWNERS"),
             contents: entries.to_string(),
         };
 
@@ -124,7 +124,7 @@ mod structural_validation_tests {
         let consistency_checker = GithubConsistencyChecker::ConsistentState;
         let validator = CodeOwnersValidator::new(consistency_checker, path_walker);
 
-        let validation = validator.validate_codeowners(codeowners_file).await;
+        let validation = validator.validate_codeowners(codeowners_file, "dotanuki-labs").await;
 
         let issue = ValidationDiagnostic::builder()
             .kind(DiagnosticKindFactory::invalid_syntax())
@@ -143,8 +143,9 @@ mod structural_validation_tests {
             [z-a]*.rs    org/crabbers
         "};
 
-        let codeowners_file = CodeOwnersFile {
-            path: PathBuf::from("path/to/.github/CODEOWNERS"),
+        let codeowners_file = CodeOwnersAttributes {
+            project_root: PathBuf::from("path/to"),
+            location: PathBuf::from("path/to/.github/CODEOWNERS"),
             contents: entries.to_string(),
         };
 
@@ -152,7 +153,7 @@ mod structural_validation_tests {
         let consistency_checker = GithubConsistencyChecker::ConsistentState;
         let validator = CodeOwnersValidator::new(consistency_checker, path_walker);
 
-        let validation = validator.validate_codeowners(codeowners_file).await;
+        let validation = validator.validate_codeowners(codeowners_file, "dotanuki-labs").await;
 
         let invalid_glob = ValidationDiagnostic::builder()
             .kind(DiagnosticKindFactory::invalid_syntax())
@@ -178,8 +179,9 @@ mod structural_validation_tests {
             .automation/    @org/infra
         "};
 
-        let codeowners_file = CodeOwnersFile {
-            path: PathBuf::from("path/to/.github/CODEOWNERS"),
+        let codeowners_file = CodeOwnersAttributes {
+            project_root: PathBuf::from("path/to"),
+            location: PathBuf::from("path/to/.github/CODEOWNERS"),
             contents: entries.to_string(),
         };
 
@@ -189,7 +191,7 @@ mod structural_validation_tests {
         let consistency_checker = GithubConsistencyChecker::ConsistentState;
         let validator = CodeOwnersValidator::new(consistency_checker, path_walker);
 
-        let validation = validator.validate_codeowners(codeowners_file).await;
+        let validation = validator.validate_codeowners(codeowners_file, "dotanuki-labs").await;
 
         let issue = ValidationDiagnostic::builder()
             .kind(DiagnosticKindFactory::dangling_glob_pattern())
@@ -210,8 +212,9 @@ mod structural_validation_tests {
             *.rs     @org/crabbers @ubiratansoares
         "};
 
-        let codeowners_file = CodeOwnersFile {
-            path: PathBuf::from("path/to/.github/CODEOWNERS"),
+        let codeowners_file = CodeOwnersAttributes {
+            project_root: PathBuf::from("path/to"),
+            location: PathBuf::from("path/to/.github/CODEOWNERS"),
             contents: entries.to_string(),
         };
 
@@ -221,7 +224,7 @@ mod structural_validation_tests {
         let consistency_checker = GithubConsistencyChecker::ConsistentState;
         let validator = CodeOwnersValidator::new(consistency_checker, path_walker);
 
-        let validation = validator.validate_codeowners(codeowners_file).await;
+        let validation = validator.validate_codeowners(codeowners_file, "dotanuki-labs").await;
 
         let duplicated_ownership = ValidationDiagnostic::builder()
             .kind(DiagnosticKindFactory::duplicate_ownership())
@@ -242,8 +245,9 @@ mod structural_validation_tests {
             *.rs        @org/crabbers @ubiratansoares
         "};
 
-        let codeowners_file = CodeOwnersFile {
-            path: PathBuf::from("path/to/.github/CODEOWNERS"),
+        let codeowners_file = CodeOwnersAttributes {
+            project_root: PathBuf::from("path/to"),
+            location: PathBuf::from("path/to/.github/CODEOWNERS"),
             contents: entries.to_string(),
         };
 
@@ -252,7 +256,7 @@ mod structural_validation_tests {
         let consistency_checker = GithubConsistencyChecker::ConsistentState;
         let validator = CodeOwnersValidator::new(consistency_checker, path_walker);
 
-        let validation = validator.validate_codeowners(codeowners_file).await;
+        let validation = validator.validate_codeowners(codeowners_file, "dotanuki-labs").await;
 
         let dangling_glob = ValidationDiagnostic::builder()
             .kind(DiagnosticKindFactory::dangling_glob_pattern())
@@ -273,10 +277,10 @@ mod structural_validation_tests {
 
 #[cfg(test)]
 mod consistency_validation_tests {
+    use crate::canopus::validation::CodeOwnersValidator;
     use crate::core::errors::test_helpers::DiagnosticKindFactory;
     use crate::core::errors::{CodeownersValidationError, ValidationDiagnostic};
-    use crate::core::models::codeowners::CodeOwnersFile;
-    use crate::features::validation::CodeOwnersValidator;
+    use crate::core::models::codeowners::CodeOwnersAttributes;
     use crate::infra::github;
     use crate::infra::paths::PathWalker;
     use assertor::{EqualityAssertion, ResultAssertion};
@@ -290,8 +294,9 @@ mod consistency_validation_tests {
             .github/    @ubiratansoares
         "};
 
-        let codeowners_file = CodeOwnersFile {
-            path: PathBuf::from("path/to/.github/CODEOWNERS"),
+        let codeowners_file = CodeOwnersAttributes {
+            project_root: PathBuf::from("path/to"),
+            location: PathBuf::from("path/to/.github/CODEOWNERS"),
             contents: entries.to_string(),
         };
 
@@ -306,7 +311,7 @@ mod consistency_validation_tests {
         let consistency_checker = github::GithubConsistencyChecker::FakeChecks(github_state);
         let validator = CodeOwnersValidator::new(consistency_checker, path_walker);
 
-        let validation = validator.validate_codeowners(codeowners_file).await;
+        let validation = validator.validate_codeowners(codeowners_file, "dotanuki-labs").await;
 
         assertor::assert_that!(validation).is_ok();
     }
@@ -318,8 +323,9 @@ mod consistency_validation_tests {
             .github/    @ufs
         "};
 
-        let codeowners_file = CodeOwnersFile {
-            path: PathBuf::from("path/to/.github/CODEOWNERS"),
+        let codeowners_file = CodeOwnersAttributes {
+            project_root: PathBuf::from("path/to"),
+            location: PathBuf::from("path/to/.github/CODEOWNERS"),
             contents: entries.to_string(),
         };
 
@@ -333,7 +339,7 @@ mod consistency_validation_tests {
         let consistency_checker = github::GithubConsistencyChecker::FakeChecks(github_state);
         let validator = CodeOwnersValidator::new(consistency_checker, path_walker);
 
-        let validation = validator.validate_codeowners(codeowners_file).await;
+        let validation = validator.validate_codeowners(codeowners_file, "dotanuki-labs").await;
 
         let user_not_found = ValidationDiagnostic::builder()
             .kind(DiagnosticKindFactory::user_does_not_belong_to_organization("ufs"))
@@ -353,8 +359,9 @@ mod consistency_validation_tests {
             .github/    @dotanuki-labs/devops
         "};
 
-        let codeowners_file = CodeOwnersFile {
-            path: PathBuf::from("path/to/.github/CODEOWNERS"),
+        let codeowners_file = CodeOwnersAttributes {
+            project_root: PathBuf::from("path/to"),
+            location: PathBuf::from("path/to/.github/CODEOWNERS"),
             contents: entries.to_string(),
         };
 
@@ -369,7 +376,7 @@ mod consistency_validation_tests {
         let consistency_checker = github::GithubConsistencyChecker::FakeChecks(github_state);
         let validator = CodeOwnersValidator::new(consistency_checker, path_walker);
 
-        let validation = validator.validate_codeowners(codeowners_file).await;
+        let validation = validator.validate_codeowners(codeowners_file, "dotanuki-labs").await;
 
         let user_not_found = ValidationDiagnostic::builder()
             .kind(DiagnosticKindFactory::team_does_not_exist("dotanuki-labs", "devops"))

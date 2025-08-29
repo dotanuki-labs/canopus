@@ -4,7 +4,7 @@
 use crate::core::errors::{
     CodeownersValidationError, ConsistencyIssue, DiagnosticKind, StructuralIssue, ValidationDiagnostic,
 };
-use crate::core::models::codeowners::{CodeOwners, CodeOwnersEntry, CodeOwnersFile};
+use crate::core::models::codeowners::{CodeOwners, CodeOwnersAttributes, CodeOwnersEntry};
 use crate::core::models::handles::Owner;
 use crate::infra::github::{CheckGithubConsistency, GithubConsistencyChecker};
 use crate::infra::paths::{DirWalking, PathWalker};
@@ -19,14 +19,19 @@ pub struct CodeOwnersValidator {
 }
 
 impl CodeOwnersValidator {
-    pub async fn validate_codeowners(&self, codeowners_file: CodeOwnersFile) -> anyhow::Result<()> {
+    pub async fn validate_codeowners(
+        &self,
+        codeowners_file: CodeOwnersAttributes,
+        organization_name: &str,
+    ) -> anyhow::Result<()> {
+        let project_root = codeowners_file.project_root.as_path();
         let codeowners = CodeOwners::try_from(codeowners_file.contents.as_str())?;
         log::info!("Successfully validated syntax");
 
         let validations = vec![
-            self.check_non_matching_glob_patterns(&codeowners, &self.path_walker.walk()),
+            self.check_non_matching_glob_patterns(&codeowners, &self.path_walker.walk(project_root)),
             self.check_duplicated_owners(&codeowners),
-            self.check_github_consistency(&codeowners).await,
+            self.check_github_consistency(organization_name, &codeowners).await,
         ];
 
         if validations.iter().all(|check| check.is_ok()) {
@@ -128,15 +133,19 @@ impl CodeOwnersValidator {
     }
 
     #[allow(clippy::todo)]
-    async fn check_github_consistency(&self, code_owners: &CodeOwners) -> anyhow::Result<()> {
+    async fn check_github_consistency(&self, organization: &str, code_owners: &CodeOwners) -> anyhow::Result<()> {
         let unique_ownerships = code_owners.unique_owners();
 
         let consistency_checks = unique_ownerships
             .into_iter()
             .map(|owner| async move {
                 match owner {
-                    Owner::GithubUser(identity) => self.github_consistency_checker.github_identity(identity).await,
-                    Owner::GithubTeam(team) => self.github_consistency_checker.github_team(team).await,
+                    Owner::GithubUser(identity) => {
+                        self.github_consistency_checker
+                            .github_identity(organization, identity)
+                            .await
+                    },
+                    Owner::GithubTeam(team) => self.github_consistency_checker.github_team(organization, team).await,
                     Owner::EmailAddress(_) => Ok(()),
                 }
             })

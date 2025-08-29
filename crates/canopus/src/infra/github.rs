@@ -9,16 +9,13 @@ use itertools::Itertools;
 use octorust::{ClientError, StatusCode, types};
 
 pub trait CheckGithubConsistency {
-    async fn github_identity(&self, handle: &GithubIdentityHandle) -> Result<(), ConsistencyIssue>;
+    async fn github_identity(&self, organization: &str, handle: &GithubIdentityHandle) -> Result<(), ConsistencyIssue>;
 
-    async fn github_team(&self, handle: &GithubTeamHandle) -> Result<(), ConsistencyIssue>;
+    async fn github_team(&self, organization: &str, handle: &GithubTeamHandle) -> Result<(), ConsistencyIssue>;
 }
 
 pub enum GithubConsistencyChecker {
-    ApiBased {
-        github_client: octorust::Client,
-        provided_organization_name: String,
-    },
+    ApiBased(octorust::Client),
     #[cfg(test)]
     FakeChecks(FakeGithubState),
     #[cfg(test)]
@@ -148,13 +145,14 @@ impl GithubConsistencyChecker {
 }
 
 impl CheckGithubConsistency for GithubConsistencyChecker {
-    async fn github_identity(&self, identity: &GithubIdentityHandle) -> Result<(), ConsistencyIssue> {
+    async fn github_identity(
+        &self,
+        organization: &str,
+        identity: &GithubIdentityHandle,
+    ) -> Result<(), ConsistencyIssue> {
         match self {
-            GithubConsistencyChecker::ApiBased {
-                github_client,
-                provided_organization_name,
-            } => {
-                self.check_user_on_github(github_client, provided_organization_name, identity.inner())
+            GithubConsistencyChecker::ApiBased(github_client) => {
+                self.check_user_on_github(github_client, organization, identity.inner())
                     .await
             },
             #[cfg(test)]
@@ -164,14 +162,11 @@ impl CheckGithubConsistency for GithubConsistencyChecker {
         }
     }
 
-    async fn github_team(&self, handle: &GithubTeamHandle) -> Result<(), ConsistencyIssue> {
+    async fn github_team(&self, organization: &str, handle: &GithubTeamHandle) -> Result<(), ConsistencyIssue> {
         match self {
-            GithubConsistencyChecker::ApiBased {
-                github_client,
-                provided_organization_name: target_organization_name,
-            } => {
+            GithubConsistencyChecker::ApiBased(github_client) => {
                 let defined_organization = handle.organization.inner();
-                if defined_organization != target_organization_name {
+                if defined_organization != organization {
                     return Err(ConsistencyIssue::TeamDoesNotMatchWithProvidedOrganization(
                         handle.clone(),
                     ));
@@ -399,13 +394,12 @@ mod tests {
 
         let organization_members = mock_server.mock(returns_members);
 
-        let consistency_checker = GithubConsistencyChecker::ApiBased {
-            github_client: create_github_client(mock_server.base_url()),
-            provided_organization_name: "dotanuki-labs".to_string(),
-        };
+        let consistency_checker = GithubConsistencyChecker::ApiBased(create_github_client(mock_server.base_url()));
 
         let identity = GithubIdentityHandle::new("ubiratansoares".to_string());
-        let check = consistency_checker.github_identity(&identity).await;
+        let check = consistency_checker
+            .github_identity(github_organization, &identity)
+            .await;
 
         organization_members.assert();
         assertor::assert_that!(check).is_ok();
@@ -426,13 +420,12 @@ mod tests {
         let organization_members = mock_server.mock(returns_members);
         let exists_on_github = mock_server.mock(returns_user_on_github);
 
-        let consistency_checker = GithubConsistencyChecker::ApiBased {
-            github_client: create_github_client(mock_server.base_url()),
-            provided_organization_name: "dotanuki-labs".to_string(),
-        };
+        let consistency_checker = GithubConsistencyChecker::ApiBased(create_github_client(mock_server.base_url()));
 
         let identity = GithubIdentityHandle::new(outside_organization.to_string());
-        let check = consistency_checker.github_identity(&identity).await;
+        let check = consistency_checker
+            .github_identity(github_organization, &identity)
+            .await;
 
         let expected = ConsistencyIssue::UserDoesNotBelongToOrganization(identity);
 
@@ -456,13 +449,12 @@ mod tests {
         let organization_members = mock_server.mock(returns_members);
         let user_not_found = mock_server.mock(returns_user_not_found);
 
-        let consistency_checker = GithubConsistencyChecker::ApiBased {
-            github_client: create_github_client(mock_server.base_url()),
-            provided_organization_name: "dotanuki-labs".to_string(),
-        };
+        let consistency_checker = GithubConsistencyChecker::ApiBased(create_github_client(mock_server.base_url()));
 
         let identity = GithubIdentityHandle::new(not_on_github.to_string());
-        let check = consistency_checker.github_identity(&identity).await;
+        let check = consistency_checker
+            .github_identity(github_organization, &identity)
+            .await;
 
         let expected = ConsistencyIssue::UserDoesNotExist(identity);
 
@@ -477,14 +469,14 @@ mod tests {
         let misspelled_organization = "dotanuki";
         let github_team = "crabbers";
 
-        let consistency_checker = GithubConsistencyChecker::ApiBased {
-            github_client: create_github_client("https://api.github.com".to_string()),
-            provided_organization_name: provided_github_organization.to_string(),
-        };
+        let consistency_checker =
+            GithubConsistencyChecker::ApiBased(create_github_client("https://api.github.com".to_string()));
 
         let organization = GithubIdentityHandle::new(misspelled_organization.to_string());
         let team_handle = GithubTeamHandle::new(organization, github_team.to_string());
-        let check = consistency_checker.github_team(&team_handle).await;
+        let check = consistency_checker
+            .github_team(provided_github_organization, &team_handle)
+            .await;
 
         let expected = ConsistencyIssue::TeamDoesNotMatchWithProvidedOrganization(team_handle);
 
@@ -502,14 +494,11 @@ mod tests {
 
         let team_not_found = mock_server.mock(returns_not_found);
 
-        let consistency_checker = GithubConsistencyChecker::ApiBased {
-            github_client: create_github_client(mock_server.base_url()),
-            provided_organization_name: "dotanuki-labs".to_string(),
-        };
+        let consistency_checker = GithubConsistencyChecker::ApiBased(create_github_client(mock_server.base_url()));
 
         let organization = GithubIdentityHandle::new(github_organization.to_string());
         let team_handle = GithubTeamHandle::new(organization, undefined_team.to_string());
-        let check = consistency_checker.github_team(&team_handle).await;
+        let check = consistency_checker.github_team(github_organization, &team_handle).await;
 
         let expected = ConsistencyIssue::TeamDoesNotExistWithinOrganization(team_handle);
 
@@ -524,13 +513,10 @@ mod tests {
         let returns_internal_error = responds_with_internal_error("/orgs/dotanuki/members");
         let internal_server_error = mock_server.mock(returns_internal_error);
 
-        let consistency_checker = GithubConsistencyChecker::ApiBased {
-            github_client: create_github_client(mock_server.base_url()),
-            provided_organization_name: "dotanuki".to_string(),
-        };
+        let consistency_checker = GithubConsistencyChecker::ApiBased(create_github_client(mock_server.base_url()));
 
         let identity = GithubIdentityHandle::new("ubiratansoares".to_string());
-        let check = consistency_checker.github_identity(&identity).await;
+        let check = consistency_checker.github_identity("dotanuki", &identity).await;
 
         let expected = ConsistencyIssue::CannotListMembersInTheOrganization;
 
@@ -545,14 +531,11 @@ mod tests {
         let returns_internal_error = responds_with_internal_error("/orgs/dotanuki/teams/crabbers");
         let internal_server_error = mock_server.mock(returns_internal_error);
 
-        let consistency_checker = GithubConsistencyChecker::ApiBased {
-            github_client: create_github_client(mock_server.base_url()),
-            provided_organization_name: "dotanuki".to_string(),
-        };
+        let consistency_checker = GithubConsistencyChecker::ApiBased(create_github_client(mock_server.base_url()));
 
         let organization = GithubIdentityHandle::new("dotanuki".to_string());
         let team_handle = GithubTeamHandle::new(organization, "crabbers".to_string());
-        let check = consistency_checker.github_team(&team_handle).await;
+        let check = consistency_checker.github_team("dotanuki", &team_handle).await;
 
         let expected = ConsistencyIssue::CannotVerifyTeam(team_handle);
 

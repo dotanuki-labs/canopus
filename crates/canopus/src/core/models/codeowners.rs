@@ -186,12 +186,14 @@ impl TryFrom<(usize, &str)> for CodeOwnersEntry {
     }
 }
 
-pub struct CodeOwnersFile {
-    pub path: PathBuf,
+#[allow(dead_code)]
+pub struct CodeOwnersAttributes {
+    pub project_root: PathBuf,
+    pub location: PathBuf,
     pub contents: String,
 }
 
-impl CodeOwnersFile {
+impl CodeOwnersAttributes {
     fn check_conventional_codeowners_location(project_location: &PathBuf) -> anyhow::Result<PathBuf> {
         log::info!("Project location : {project_location:?}");
 
@@ -222,7 +224,7 @@ impl CodeOwnersFile {
     }
 }
 
-impl TryFrom<PathBuf> for CodeOwnersFile {
+impl TryFrom<PathBuf> for CodeOwnersAttributes {
     type Error = anyhow::Error;
 
     fn try_from(value: PathBuf) -> anyhow::Result<Self> {
@@ -230,10 +232,12 @@ impl TryFrom<PathBuf> for CodeOwnersFile {
         log::debug!("Codeowners config found at : {}", &codeowners_file.to_string_lossy());
 
         let codeowners_content = std::fs::read_to_string(codeowners_file.as_path())?;
-        Ok(Self {
-            path: codeowners_file,
+        let attributes = Self {
+            project_root: value,
+            location: codeowners_file,
             contents: codeowners_content,
-        })
+        };
+        Ok(attributes)
     }
 }
 

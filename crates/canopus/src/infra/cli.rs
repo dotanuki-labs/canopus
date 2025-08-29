@@ -1,8 +1,8 @@
 // Copyright 2025 Dotanuki Labs
 // SPDX-License-Identifier: MIT
 
-use crate::features::RequestedFeature;
-use crate::features::RequestedFeature::ValidateCodeowners;
+use crate::canopus::CanopusCommand;
+use crate::canopus::CanopusCommand::ValidateCodeowners;
 use crate::infra::cli::Commands::Validate;
 use clap::{Parser, Subcommand, arg};
 use std::path::PathBuf;
@@ -30,7 +30,7 @@ enum Commands {
     Validate(ValidateArguments),
 }
 
-pub fn parse_arguments() -> anyhow::Result<RequestedFeature> {
+pub fn parse_arguments() -> anyhow::Result<CanopusCommand> {
     let cli = CliParser::parse();
 
     let execution = match cli.command {
