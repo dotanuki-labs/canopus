@@ -17,11 +17,25 @@ pub enum PathWalker {
 impl DirWalking for PathWalker {
     fn walk(&self, origin: &Path) -> Vec<PathBuf> {
         match self {
-            PathWalker::GitAware => WalkBuilder::new(origin)
-                .build()
-                .filter_map(|entry| entry.ok())
-                .map(|entry| entry.path().to_path_buf())
-                .collect::<Vec<_>>(),
+            PathWalker::GitAware => {
+                let current_dir = std::env::current_dir().unwrap();
+
+                WalkBuilder::new(origin)
+                    .hidden(false)
+                    .git_exclude(true)
+                    .filter_entry(|entry| !entry.path().to_string_lossy().contains(".git/"))
+                    .build()
+                    .filter_map(|entry| entry.ok())
+                    .map(|entry| {
+                        // We have to check whether this is sufficient
+                        if let Ok(normalized) = entry.path().to_path_buf().strip_prefix(&current_dir) {
+                            normalized.to_path_buf()
+                        } else {
+                            entry.path().to_path_buf()
+                        }
+                    })
+                    .collect::<Vec<_>>()
+            },
             #[cfg(test)]
             PathWalker::FakePaths(paths) => paths.clone().into_iter().map(PathBuf::from).collect(),
         }

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 use crate::core::models::handles::{GithubIdentityHandle, GithubTeamHandle};
+use itertools::Itertools;
 use std::fmt::{Display, Formatter};
 
 #[derive(Clone, Debug, PartialEq)]
@@ -90,7 +91,7 @@ impl ValidationDiagnostic {
 
 impl Display for ValidationDiagnostic {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "[{}] L{} : {}", self.kind, self.line, self.context)
+        write!(f, "L{} : {} [{}]", self.line + 1, self.context, self.kind)
     }
 }
 
@@ -128,10 +129,15 @@ impl Display for CodeownersValidationError {
         let messages = self
             .diagnostics
             .iter()
+            .sorted_by_key(|diagnostic| diagnostic.line)
             .map(|diagnostic| diagnostic.to_string())
             .collect::<Vec<_>>();
 
-        f.write_str(&messages.join("\n"))
+        let briefing = "failed to validate codeowners";
+
+        let formatted = format!("{}\n\n{}\n", briefing, messages.join("\n"));
+
+        f.write_str(formatted.as_str())
     }
 }
 

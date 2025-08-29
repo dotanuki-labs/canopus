@@ -67,7 +67,7 @@ impl GithubConsistencyChecker {
             .get_by_username(user)
             .await
             .map_err(|incoming| {
-                log::error!("{}", incoming);
+                log::info!("Failed to fetch info for {} user on Github", user);
 
                 let handle = target_user.clone();
 
@@ -100,7 +100,8 @@ impl GithubConsistencyChecker {
             .get_by_name(organization, team)
             .await
             .map_err(|incoming| {
-                log::error!("{}", incoming);
+                log::info!("Failed to fetch info for {}/{} team on Github", organization, team);
+
                 let org_handle = GithubIdentityHandle::new(organization.to_owned());
                 let team_handle = GithubTeamHandle::new(org_handle, team.to_owned());
                 let ClientError::HttpError { status, .. } = incoming else {
