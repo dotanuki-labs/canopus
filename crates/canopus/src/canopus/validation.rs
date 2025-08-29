@@ -26,7 +26,7 @@ impl CodeOwnersValidator {
     ) -> anyhow::Result<()> {
         let project_root = codeowners_file.project_root.as_path();
         let codeowners = CodeOwners::try_from(codeowners_file.contents.as_str())?;
-        log::info!("Successfully validated syntax");
+        log::info!("Syntax errors : not found");
 
         let validations = vec![
             self.check_non_matching_glob_patterns(&codeowners, &self.path_walker.walk(project_root)),
@@ -405,7 +405,7 @@ mod structural_validation_tests {
         let issue = ValidationDiagnostic::builder()
             .kind(DiagnosticKindFactory::dangling_glob_pattern())
             .line_number(1)
-            .description(".automation/ does not match any project path")
+            .description(".automation does not match any project path")
             .build();
 
         let expected = CodeownersValidationError::from(issue);
@@ -421,7 +421,7 @@ mod structural_validation_tests {
             *.rs     @org/crabbers @ubiratansoares
         "};
 
-        let project_paths = vec!["validation.rs", "docs/", "docs/README.md"];
+        let project_paths = vec!["validation.rs", "docs", "docs/README.md"];
 
         let context = test_builders::codeowners_attributes(contents);
         let validator = test_builders::structural_only_codeowners_validator(project_paths);
@@ -457,7 +457,7 @@ mod structural_validation_tests {
         let dangling_glob = ValidationDiagnostic::builder()
             .kind(DiagnosticKindFactory::dangling_glob_pattern())
             .line_number(1)
-            .description("docs/ does not match any project path")
+            .description("docs does not match any project path")
             .build();
 
         let duplicated_ownership = ValidationDiagnostic::builder()
@@ -487,7 +487,7 @@ mod consistency_validation_tests {
             .github/    @ubiratansoares
         "};
 
-        let project_paths = vec![".github/", "main.rs"];
+        let project_paths = vec![".github", "main.rs"];
 
         let github_state = github::FakeGithubState::builder()
             .add_known_user("@ubiratansoares")
@@ -509,7 +509,7 @@ mod consistency_validation_tests {
             .github/    @ufs
         "};
 
-        let project_paths = vec![".github/", "main.rs"];
+        let project_paths = vec![".github", "main.rs"];
 
         let github_state = github::FakeGithubState::builder()
             .add_known_team("@dotanuki-labs/rustaceans")
@@ -533,12 +533,12 @@ mod consistency_validation_tests {
     #[tokio::test]
     async fn should_detect_non_existing_github_team() {
         let contents = indoc! {"
-            *.rs        @dotanuki-labs/rustaceans
-            docs/       @dotanuki-labs/writers
-            .github/    @dotanuki-labs/devops
+            *.rs            @dotanuki-labs/rustaceans
+            *.md            @dotanuki-labs/writers
+            .github/*.json  @dotanuki-labs/devops
         "};
 
-        let project_paths = vec![".github/", "docs/", "main.rs"];
+        let project_paths = vec![".github/renovate.json", "README.md", "main.rs"];
 
         let github_state = github::FakeGithubState::builder()
             .add_known_team("@dotanuki-labs/rustaceans")

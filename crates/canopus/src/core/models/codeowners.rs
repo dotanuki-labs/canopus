@@ -7,7 +7,7 @@ use anyhow::bail;
 use globset::Glob;
 use itertools::Itertools;
 use std::collections::HashMap;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
 pub struct OwnershipRule {
@@ -123,9 +123,10 @@ impl TryFrom<(usize, &str)> for CodeOwnersEntry {
                 panic!("L{line_number} : expecting non-empty line")
             };
 
+            let normalized_pattern = raw_pattern.strip_suffix("/").unwrap_or(raw_pattern);
             let mut diagnostics: Vec<ValidationDiagnostic> = vec![];
 
-            let glob_pattern = match Glob::new(raw_pattern) {
+            let glob_pattern = match Glob::new(normalized_pattern) {
                 Ok(glob) => Some(glob),
                 Err(_) => {
                     let invalid_glob = ValidationDiagnostic::builder()
@@ -186,7 +187,7 @@ impl TryFrom<(usize, &str)> for CodeOwnersEntry {
     }
 }
 
-#[allow(dead_code)]
+#[derive(Debug)]
 pub struct CodeOwnersContext {
     pub project_root: PathBuf,
     pub location: PathBuf,
@@ -194,8 +195,8 @@ pub struct CodeOwnersContext {
 }
 
 impl CodeOwnersContext {
-    fn check_conventional_codeowners_location(project_location: &PathBuf) -> anyhow::Result<PathBuf> {
-        log::info!("Project location : {project_location:?}");
+    fn check_conventional_codeowners_location(project_location: &Path) -> anyhow::Result<PathBuf> {
+        log::info!("Project location : {}", project_location.to_string_lossy());
 
         let possible_locations = [
             project_location.join(".github/CODEOWNERS"),
@@ -213,7 +214,7 @@ impl CodeOwnersContext {
         }
 
         if config_files.len() > 1 {
-            bail!("found multiple definitions for CODEOWNERS");
+            bail!("found multiple CODEOWNERS definitions");
         }
 
         let codeowners = config_files
@@ -228,8 +229,7 @@ impl TryFrom<PathBuf> for CodeOwnersContext {
     type Error = anyhow::Error;
 
     fn try_from(value: PathBuf) -> anyhow::Result<Self> {
-        let codeowners_file = Self::check_conventional_codeowners_location(&value)?;
-        log::debug!("Codeowners config found at : {}", &codeowners_file.to_string_lossy());
+        let codeowners_file = Self::check_conventional_codeowners_location(value.as_path())?;
 
         let codeowners_content = std::fs::read_to_string(codeowners_file.as_path())?;
         let attributes = Self {
@@ -237,6 +237,12 @@ impl TryFrom<PathBuf> for CodeOwnersContext {
             location: codeowners_file,
             contents: codeowners_content,
         };
+
+        log::info!(
+            "Codeowners config found at : {}",
+            &attributes.location.to_string_lossy()
+        );
+
         Ok(attributes)
     }
 }
@@ -312,5 +318,49 @@ impl TryFrom<&str> for CodeOwners {
         }
 
         Ok(CodeOwners::new(entries, ownerships))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::core::models::codeowners::CodeOwnersContext;
+    use assertor::StringAssertion;
+    use indoc::indoc;
+    use std::fs;
+    use temp_dir::TempDir;
+
+    #[test]
+    fn should_report_codeowners_not_found() {
+        let temp_dir = TempDir::new().expect("Cant create temp dir");
+
+        let project_path = temp_dir.path().to_path_buf();
+
+        let context = CodeOwnersContext::try_from(project_path);
+
+        assertor::assert_that!(context.unwrap_err().to_string()).contains("no CODEOWNERS definition found");
+    }
+
+    #[test]
+    fn should_detect_multiple_codeowners() {
+        let codeowners = indoc! {"
+            # Basic syntax
+            *.rs    @dotanuki/crabbers
+        "};
+
+        let temp_dir = TempDir::new().expect("Cant create temp dir");
+
+        let some_config = temp_dir.path().join("CODEOWNERS");
+        fs::write(&some_config, codeowners).expect("failed to write content to CODEOWNERS file");
+
+        fs::create_dir_all(temp_dir.child(".github")).expect("Failed to create .github dir");
+
+        let another_config = temp_dir.path().join(".github/CODEOWNERS");
+        fs::write(&another_config, codeowners).expect("failed to write content to CODEOWNERS file");
+
+        let project_path = some_config.parent().unwrap().to_path_buf();
+
+        let context = CodeOwnersContext::try_from(project_path);
+
+        assertor::assert_that!(context.unwrap_err().to_string()).contains("multiple CODEOWNERS definitions");
     }
 }
