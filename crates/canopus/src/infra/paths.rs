@@ -2,22 +2,22 @@
 // SPDX-License-Identifier: MIT
 
 use ignore::WalkBuilder;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 pub trait DirWalking {
-    fn walk(&self) -> Vec<PathBuf>;
+    fn walk(&self, origin: &Path) -> Vec<PathBuf>;
 }
 
 pub enum PathWalker {
-    GitAware(PathBuf),
+    GitAware,
     #[cfg(test)]
     FakePaths(Vec<String>),
 }
 
 impl DirWalking for PathWalker {
-    fn walk(&self) -> Vec<PathBuf> {
+    fn walk(&self, origin: &Path) -> Vec<PathBuf> {
         match self {
-            PathWalker::GitAware(origin) => WalkBuilder::new(origin)
+            PathWalker::GitAware => WalkBuilder::new(origin)
                 .build()
                 .filter_map(|entry| entry.ok())
                 .map(|entry| entry.path().to_path_buf())
