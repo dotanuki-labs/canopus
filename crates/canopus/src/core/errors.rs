@@ -18,6 +18,7 @@ pub enum ConsistencyIssue {
     CannotVerifyTeam(GithubTeamHandle),
     UserDoesNotExist(GithubIdentityHandle),
     OrganizationDoesNotExist(GithubIdentityHandle),
+    TeamDoesNotMatchWithProvidedOrganization(GithubTeamHandle),
     TeamDoesNotExistWithinOrganization(GithubTeamHandle),
     UserDoesNotBelongToOrganization(GithubIdentityHandle),
 }

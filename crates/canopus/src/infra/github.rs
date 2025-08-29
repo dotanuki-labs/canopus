@@ -17,7 +17,7 @@ pub trait CheckGithubConsistency {
 pub enum GithubConsistencyChecker {
     ApiBased {
         github_client: octorust::Client,
-        target_organization_name: String,
+        provided_organization_name: String,
     },
     #[cfg(test)]
     FakeChecks(FakeGithubState),
@@ -152,9 +152,9 @@ impl CheckGithubConsistency for GithubConsistencyChecker {
         match self {
             GithubConsistencyChecker::ApiBased {
                 github_client,
-                target_organization_name,
+                provided_organization_name,
             } => {
-                self.check_user_on_github(github_client, target_organization_name, identity.inner())
+                self.check_user_on_github(github_client, provided_organization_name, identity.inner())
                     .await
             },
             #[cfg(test)]
@@ -168,8 +168,15 @@ impl CheckGithubConsistency for GithubConsistencyChecker {
         match self {
             GithubConsistencyChecker::ApiBased {
                 github_client,
-                target_organization_name: _target_organization_name,
+                provided_organization_name: target_organization_name,
             } => {
+                let defined_organization = handle.organization.inner();
+                if defined_organization != target_organization_name {
+                    return Err(ConsistencyIssue::TeamDoesNotMatchWithProvidedOrganization(
+                        handle.clone(),
+                    ));
+                };
+
                 self.check_team_on_github(github_client, handle.organization.inner(), handle.name.as_str())
                     .await
             },
@@ -394,7 +401,7 @@ mod tests {
 
         let consistency_checker = GithubConsistencyChecker::ApiBased {
             github_client: create_github_client(mock_server.base_url()),
-            target_organization_name: "dotanuki-labs".to_string(),
+            provided_organization_name: "dotanuki-labs".to_string(),
         };
 
         let identity = GithubIdentityHandle::new("ubiratansoares".to_string());
@@ -421,7 +428,7 @@ mod tests {
 
         let consistency_checker = GithubConsistencyChecker::ApiBased {
             github_client: create_github_client(mock_server.base_url()),
-            target_organization_name: "dotanuki-labs".to_string(),
+            provided_organization_name: "dotanuki-labs".to_string(),
         };
 
         let identity = GithubIdentityHandle::new(outside_organization.to_string());
@@ -451,7 +458,7 @@ mod tests {
 
         let consistency_checker = GithubConsistencyChecker::ApiBased {
             github_client: create_github_client(mock_server.base_url()),
-            target_organization_name: "dotanuki-labs".to_string(),
+            provided_organization_name: "dotanuki-labs".to_string(),
         };
 
         let identity = GithubIdentityHandle::new(not_on_github.to_string());
@@ -461,6 +468,26 @@ mod tests {
 
         organization_members.assert();
         user_not_found.assert();
+        assertor::assert_that!(check).is_equal_to(Err(expected));
+    }
+
+    #[tokio::test]
+    async fn should_report_team_does_not_match() {
+        let provided_github_organization = "dotanuki-labs";
+        let misspelled_organization = "dotanuki";
+        let github_team = "crabbers";
+
+        let consistency_checker = GithubConsistencyChecker::ApiBased {
+            github_client: create_github_client("https://api.github.com".to_string()),
+            provided_organization_name: provided_github_organization.to_string(),
+        };
+
+        let organization = GithubIdentityHandle::new(misspelled_organization.to_string());
+        let team_handle = GithubTeamHandle::new(organization, github_team.to_string());
+        let check = consistency_checker.github_team(&team_handle).await;
+
+        let expected = ConsistencyIssue::TeamDoesNotMatchWithProvidedOrganization(team_handle);
+
         assertor::assert_that!(check).is_equal_to(Err(expected));
     }
 
@@ -477,7 +504,7 @@ mod tests {
 
         let consistency_checker = GithubConsistencyChecker::ApiBased {
             github_client: create_github_client(mock_server.base_url()),
-            target_organization_name: "dotanuki-labs".to_string(),
+            provided_organization_name: "dotanuki-labs".to_string(),
         };
 
         let organization = GithubIdentityHandle::new(github_organization.to_string());
@@ -499,7 +526,7 @@ mod tests {
 
         let consistency_checker = GithubConsistencyChecker::ApiBased {
             github_client: create_github_client(mock_server.base_url()),
-            target_organization_name: "dotanuki".to_string(),
+            provided_organization_name: "dotanuki".to_string(),
         };
 
         let identity = GithubIdentityHandle::new("ubiratansoares".to_string());
@@ -520,7 +547,7 @@ mod tests {
 
         let consistency_checker = GithubConsistencyChecker::ApiBased {
             github_client: create_github_client(mock_server.base_url()),
-            target_organization_name: "dotanuki-labs".to_string(),
+            provided_organization_name: "dotanuki".to_string(),
         };
 
         let organization = GithubIdentityHandle::new("dotanuki".to_string());
