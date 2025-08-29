@@ -187,13 +187,13 @@ impl TryFrom<(usize, &str)> for CodeOwnersEntry {
 }
 
 #[allow(dead_code)]
-pub struct CodeOwnersAttributes {
+pub struct CodeOwnersContext {
     pub project_root: PathBuf,
     pub location: PathBuf,
     pub contents: String,
 }
 
-impl CodeOwnersAttributes {
+impl CodeOwnersContext {
     fn check_conventional_codeowners_location(project_location: &PathBuf) -> anyhow::Result<PathBuf> {
         log::info!("Project location : {project_location:?}");
 
@@ -224,7 +224,7 @@ impl CodeOwnersAttributes {
     }
 }
 
-impl TryFrom<PathBuf> for CodeOwnersAttributes {
+impl TryFrom<PathBuf> for CodeOwnersContext {
     type Error = anyhow::Error;
 
     fn try_from(value: PathBuf) -> anyhow::Result<Self> {
