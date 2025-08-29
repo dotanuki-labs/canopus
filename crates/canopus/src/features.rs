@@ -38,7 +38,7 @@ pub async fn execute(requested: RequestedFeature) -> anyhow::Result<()> {
 
             let consistency_checker = GithubConsistencyChecker::ApiBased {
                 github_client: Client::new(user_agent, Credentials::Token(github_token))?,
-                target_organization_name: organization_name,
+                provided_organization_name: organization_name,
             };
 
             let validator = CodeOwnersValidator::new(consistency_checker, path_walker);

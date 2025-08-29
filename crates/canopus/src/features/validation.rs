@@ -217,6 +217,19 @@ impl CodeOwnersValidator {
                 ConsistencyIssue::CannotListMembersInTheOrganization => {
                     todo!("Missing this implementation because we dont have a line number in this case")
                 },
+                ConsistencyIssue::TeamDoesNotMatchWithProvidedOrganization(handle) => {
+                    let owner = Owner::GithubTeam(handle.clone());
+                    let first_occurrence = code_owners.occurrences(&owner)[0];
+                    (
+                        issue,
+                        first_occurrence,
+                        format!(
+                            "team '{}/{}' does not belong to this organization",
+                            handle.organization.inner(),
+                            handle.name
+                        ),
+                    )
+                },
             })
             .map(|(issue, line, cause)| {
                 ValidationDiagnostic::builder()
