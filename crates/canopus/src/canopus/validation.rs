@@ -391,8 +391,8 @@ mod structural_validation_tests {
     #[tokio::test]
     async fn should_detect_dangling_globs() {
         let contents = indoc! {"
-            *.rs            @org/rustaceans
-            .automation/    @org/infra
+            *.rs                @dotanuki-labs/rustaceans
+            .automation/**      @dotanuki-labs/infra
         "};
 
         let project_paths = vec!["validation.rs"];
@@ -405,7 +405,7 @@ mod structural_validation_tests {
         let issue = ValidationDiagnostic::builder()
             .kind(DiagnosticKindFactory::dangling_glob_pattern())
             .line_number(1)
-            .description(".automation does not match any project path")
+            .description(".automation/** does not match any project path")
             .build();
 
         let expected = CodeownersValidationError::from(issue);
@@ -416,12 +416,12 @@ mod structural_validation_tests {
     #[tokio::test]
     async fn should_detect_strictly_duplicated_ownership_rules() {
         let contents = indoc! {"
-            *.rs     @org/rustaceans
-            docs/    @org/rustaceans
-            *.rs     @org/crabbers @ubiratansoares
+            *.rs            @org/rustaceans
+            docs/**/*.md    @org/devs
+            *.rs            @org/crabbers @ubiratansoares
         "};
 
-        let project_paths = vec!["validation.rs", "docs", "docs/README.md"];
+        let project_paths = vec!["validation.rs", "docs/README.md", "docs/README.md"];
 
         let context = test_builders::codeowners_attributes(contents);
         let validator = test_builders::structural_only_codeowners_validator(project_paths);
@@ -442,12 +442,12 @@ mod structural_validation_tests {
     #[tokio::test]
     async fn should_detect_multiple_non_syntax_issues() {
         let contents = indoc! {"
-            *.rs        @org/rustaceans
-            docs/       @org/devs
-            *.rs        @org/crabbers @ubiratansoares
+            *.rs            @org/rustaceans
+            docs/**/*.md    @org/devs
+            *.rs            @org/crabbers @ubiratansoares
         "};
 
-        let project_paths = vec!["validation.rs", ".github/", ".github/CODEOWNERS"];
+        let project_paths = vec!["validation.rs", ".github", ".github/CODEOWNERS"];
 
         let context = test_builders::codeowners_attributes(contents);
         let validator = test_builders::structural_only_codeowners_validator(project_paths);
@@ -457,7 +457,7 @@ mod structural_validation_tests {
         let dangling_glob = ValidationDiagnostic::builder()
             .kind(DiagnosticKindFactory::dangling_glob_pattern())
             .line_number(1)
-            .description("docs does not match any project path")
+            .description("docs/**/*.md does not match any project path")
             .build();
 
         let duplicated_ownership = ValidationDiagnostic::builder()
@@ -483,11 +483,11 @@ mod consistency_validation_tests {
     #[tokio::test]
     async fn should_find_no_consistency_issues() {
         let contents = indoc! {"
-            *.rs        @dotanuki-labs/rustaceans
-            .github/    @ubiratansoares
+            *.rs            @dotanuki-labs/rustaceans
+            .github/**/*    @ubiratansoares
         "};
 
-        let project_paths = vec![".github", "main.rs"];
+        let project_paths = vec![".github/CODEOWNERS", "main.rs"];
 
         let github_state = github::FakeGithubState::builder()
             .add_known_user("@ubiratansoares")
@@ -505,11 +505,11 @@ mod consistency_validation_tests {
     #[tokio::test]
     async fn should_detect_non_existing_github_user() {
         let contents = indoc! {"
-            *.rs        @dotanuki-labs/rustaceans
-            .github/    @ufs
+            *.rs            @dotanuki-labs/rustaceans
+            .github/**/*    @ufs
         "};
 
-        let project_paths = vec![".github", "main.rs"];
+        let project_paths = vec![".github/CODEOWNERS", "main.rs"];
 
         let github_state = github::FakeGithubState::builder()
             .add_known_team("@dotanuki-labs/rustaceans")

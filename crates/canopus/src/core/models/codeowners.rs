@@ -123,10 +123,9 @@ impl TryFrom<(usize, &str)> for CodeOwnersEntry {
                 panic!("L{line_number} : expecting non-empty line")
             };
 
-            let normalized_pattern = raw_pattern.strip_suffix("/").unwrap_or(raw_pattern);
             let mut diagnostics: Vec<ValidationDiagnostic> = vec![];
 
-            let glob_pattern = match Glob::new(normalized_pattern) {
+            let glob_pattern = match Glob::new(raw_pattern) {
                 Ok(glob) => Some(glob),
                 Err(_) => {
                     let invalid_glob = ValidationDiagnostic::builder()

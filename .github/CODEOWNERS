@@ -1,1 +1,2 @@
-*.*        @dotanuki-labs/devs
+*.rs            @dotanuki-labs/devs
+*.github/**     @dotanuki-labs/devs
