@@ -14,7 +14,7 @@ pub enum StructuralIssue {
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum ConsistencyIssue {
-    CannotListMembersInTheOrganization,
+    CannotListMembersInTheOrganization(String),
     CannotVerifyUser(GithubIdentityHandle),
     CannotVerifyTeam(GithubTeamHandle),
     UserDoesNotExist(GithubIdentityHandle),
@@ -91,7 +91,11 @@ impl ValidationDiagnostic {
 
 impl Display for ValidationDiagnostic {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "L{} : {} [{}]", self.line + 1, self.context, self.kind)
+        if self.line == usize::MAX {
+            write!(f, "Preconditions : {} [{}]", self.context, self.kind)
+        } else {
+            write!(f, "L{} : {} [{}]", self.line + 1, self.context, self.kind)
+        }
     }
 }
 
