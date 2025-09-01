@@ -34,7 +34,7 @@ impl GithubConsistencyChecker {
         let all_members = github_client
             .orgs()
             .list_all_members(organization, filter, role)
-            .map_err(|_| CannotListMembersInTheOrganization)
+            .map_err(|_| CannotListMembersInTheOrganization(organization.to_string()))
             .await?;
 
         let all_handles = all_members
@@ -519,7 +519,7 @@ mod tests {
         let identity = GithubIdentityHandle::new("ubiratansoares".to_string());
         let check = consistency_checker.github_identity("dotanuki", &identity).await;
 
-        let expected = ConsistencyIssue::CannotListMembersInTheOrganization;
+        let expected = ConsistencyIssue::CannotListMembersInTheOrganization("dotanuki".to_string());
 
         internal_server_error.assert();
         assertor::assert_that!(check).is_equal_to(Err(expected));

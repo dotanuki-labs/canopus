@@ -223,9 +223,11 @@ impl CodeOwnersValidator {
                         ),
                     )
                 },
-                ConsistencyIssue::CannotListMembersInTheOrganization => {
-                    todo!("Missing this implementation because we dont have a line number in this case")
-                },
+                ConsistencyIssue::CannotListMembersInTheOrganization(organization) => (
+                    issue,
+                    usize::MAX,
+                    format!("failed to list members that belong to '{}' organization", organization),
+                ),
                 ConsistencyIssue::TeamDoesNotMatchWithProvidedOrganization(handle) => {
                     let owner = Owner::GithubTeam(handle.clone());
                     let first_occurrence = code_owners.occurrences(&owner)[0];
