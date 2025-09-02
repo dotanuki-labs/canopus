@@ -23,11 +23,12 @@ runs:
           run: rustup show active-toolchain
 
         - name: Install additional tools (Mac-only)
-          if:  ${{ runner.os == 'macOS' && inputs.install-extra-tools != 'false' }}
+          if:  ${{ runner.os == 'macOS'}}
           shell: bash
           run: brew install coreutils
 
         - name: Install additional tools (Linux-only)
           if:  ${{ runner.os == 'Linux' && inputs.install-extra-tools != 'false' }}
           shell: bash
-          run: sudo apt-get install -qy binutils-aarch64-linux-gnu gcc-aarch64-linux-gnu g++-aarch64-linux-gnu pkg-config
+          run: |
+            sudo apt-get install -qy binutils-aarch64-linux-gnu gcc-aarch64-linux-gnu g++-aarch64-linux-gnu pkg-config libssl-dev

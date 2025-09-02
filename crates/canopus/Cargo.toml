@@ -23,18 +23,17 @@ itertools.workspace = true
 human-panic.workspace = true
 lazy-regex.workspace = true
 log.workspace = true
-octorust.workspace = true
-tokio.workspace = true
-rand = "0.9.2"
+octorust = { workspace = true, features = ["default"]}
+reqwest = { workspace = true, features = ["rustls-tls"]}
+reqwest-middleware.workspace = true
+reqwest-retry.workspace = true
+tokio = { workspace = true, features = ["full"]}
 
 [dev-dependencies]
 assert_cmd.workspace = true
 assertor.workspace = true
 indoc.workspace = true
 httpmock.workspace = true
-predicates.workspace = true
-reqwest.workspace = true
-reqwest-middleware.workspace = true
-reqwest-retry.workspace = true
+rand = "0.9.2"
 serde_json.workspace = true
 temp-dir.workspace = true

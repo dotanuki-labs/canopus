@@ -4,7 +4,6 @@
 use crate::ArtifactType;
 use crate::utils::BuildEnvironment::{CI, Local};
 use crate::utils::{docker_execution_arguments, evaluate_build_environment};
-use anyhow::bail;
 use sha2::{Digest, Sha256};
 use std::{env, fs};
 use walkdir::WalkDir;
@@ -39,12 +38,39 @@ fn build_targets(shell: &Shell) -> anyhow::Result<()> {
     match evaluate_build_environment() {
         CI => {
             println!("• Building on CI environment");
-            let targets = evaluate_build_targets()?;
+            let is_linux_gha_runner = env::var("RUNNER_OS")
+                .map(|os| os.eq_ignore_ascii_case("linux"))
+                .unwrap_or(false);
 
-            for target in targets {
-                cmd!(shell, "rustup target add {target}").run()?;
-                cmd!(shell, "cargo build --release --target {target}").run()?;
-                let binary = format!("target/{target}/release/canopus");
+            let linux_build_params = [("x86_64", "unknown-linux-musl"), ("aarch64", "unknown-linux-musl")];
+
+            let apple_build_params = [("x86_64", "apple-darwin"), ("aarch64", "apple-darwin")];
+
+            let actual_params = if is_linux_gha_runner {
+                linux_build_params
+            } else {
+                apple_build_params
+            };
+
+            println!("OS = {}", env::var("RUNNER_OS")?);
+            println!("Build params = {:?}", actual_params);
+
+            for (arch, target) in actual_params {
+                if is_linux_gha_runner {
+                    let current_dir = env::current_dir()?;
+                    let volume = format!("{}:/home/rust/src", current_dir.to_str().unwrap());
+                    let docker_image = format!("docker.io/blackdex/rust-musl:{arch}-musl");
+                    cmd!(shell, "docker run --rm -v {volume} {docker_image} cargo build --release --target {arch}-{target} --package canopus").run()?;
+                } else {
+                    cmd!(shell, "rustup target add {arch}-{target}").run()?;
+                    cmd!(
+                        shell,
+                        "cargo build --release --target {arch}-{target} --package canopus"
+                    )
+                    .run()?;
+                }
+
+                let binary = format!("target/{arch}-{target}/release/canopus");
                 let destination = format!("{DEFAULT_ARTIFACTS_DIR}/canopus-{target}");
                 shell.copy_file(&binary, &destination)?;
                 cmd!(shell, "chmod +x {destination}").run()?;
@@ -101,21 +127,4 @@ fn compute_checksums(shell: &Shell) -> anyhow::Result<()> {
     let checksums_file = format!("{DEFAULT_ARTIFACTS_DIR}/checksums.txt");
     shell.write_file(checksums_file, checksums)?;
     Ok(())
-}
-
-fn evaluate_build_targets() -> anyhow::Result<Vec<String>> {
-    let runner_name = env::var("RUNNER_OS")?;
-    let platform = match runner_name.as_str() {
-        "Linux" => "unknown-linux-gnu",
-        "macOS" => "apple-darwin",
-        _ => bail!("Unsupported runner : {}", runner_name),
-    };
-
-    let archs = vec!["x86_64", "aarch64"];
-    let targets = archs
-        .into_iter()
-        .map(|arch| format!("{arch}-{platform}"))
-        .collect::<Vec<_>>();
-
-    Ok(targets)
 }
