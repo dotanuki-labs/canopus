@@ -7,16 +7,30 @@ use crate::infra::github::GithubConsistencyChecker;
 use crate::infra::{cli, paths};
 use octorust::Client;
 use octorust::auth::Credentials;
+use policies::ExponentialBackoff;
+use reqwest_retry::policies;
 
 mod canopus;
 mod core;
 mod infra;
 
 fn create_canopus() -> anyhow::Result<Canopus> {
+    // Configuration for the underlying HTTP client
+    let max_retries_per_request = 3;
+    let base_http_client = reqwest::Client::builder().build()?;
+
+    let exponential_backoff = ExponentialBackoff::builder().build_with_max_retries(max_retries_per_request);
+    let retry_middleware = reqwest_retry::RetryTransientMiddleware::new_with_policy(exponential_backoff);
+    let custom_http_client = reqwest_middleware::ClientBuilder::new(base_http_client)
+        .with(retry_middleware)
+        .build();
+
+    // Configuration for the Github Client
     let user_agent = format!("{}/{}", env!("CARGO_PKG_NAME"), env!("CARGO_PKG_VERSION"));
     let credentials = std::env::var("GITHUB_TOKEN").map(Credentials::Token).ok();
+    let github_client = Client::custom(user_agent, credentials, custom_http_client);
+    let consistency_checker = GithubConsistencyChecker::ApiBased(github_client);
 
-    let consistency_checker = GithubConsistencyChecker::ApiBased(Client::new(user_agent, credentials)?);
     let path_walker = paths::PathWalker::GitAware;
     let codeowners_validator = CodeOwnersValidator::new(consistency_checker, path_walker);
     let canopus = Canopus::new(codeowners_validator);
