@@ -71,7 +71,7 @@ fn build_targets(shell: &Shell) -> anyhow::Result<()> {
                 }
 
                 let binary = format!("target/{arch}-{target}/release/canopus");
-                let destination = format!("{DEFAULT_ARTIFACTS_DIR}/canopus-{target}");
+                let destination = format!("{DEFAULT_ARTIFACTS_DIR}/canopus-{arch}-{target}");
                 shell.copy_file(&binary, &destination)?;
                 cmd!(shell, "chmod +x {destination}").run()?;
             }
