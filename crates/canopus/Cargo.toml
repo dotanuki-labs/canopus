@@ -25,6 +25,7 @@ human-panic.workspace = true
 lazy-regex.workspace = true
 log.workspace = true
 octocrab.workspace = true
+tikv-jemallocator.workspace = true
 tokio = { workspace = true, features = ["full"] }
 
 [dev-dependencies]
