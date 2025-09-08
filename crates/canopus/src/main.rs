@@ -6,10 +6,14 @@ use crate::canopus::validation::CodeOwnersValidator;
 use crate::infra::github::GithubConsistencyChecker;
 use crate::infra::{cli, paths};
 use octocrab::service::middleware::retry::RetryConfig;
+use tikv_jemallocator::Jemalloc;
 
 mod canopus;
 mod core;
 mod infra;
+
+#[global_allocator]
+static GLOBAL: Jemalloc = Jemalloc;
 
 fn create_canopus() -> anyhow::Result<Canopus> {
     let max_retries_per_request = 3;

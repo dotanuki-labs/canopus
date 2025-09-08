@@ -35,15 +35,6 @@ fn check_code_smells(shell: &Shell) -> anyhow::Result<()> {
     println!("🔥 Checking smells in Rust code (clippy)");
     println!();
 
-    match evaluate_build_environment() {
-        CI => {
-            let (volume, image) = docker_execution_arguments();
-            cmd!(shell, "docker run --rm -v {volume} {image} clippy").run()?;
-        },
-        Local => {
-            cmd!(shell, "cargo clippy --all-targets --all-features -- -D warnings").run()?;
-        },
-    };
-
+    cmd!(shell, "cargo clippy --all-targets --all-features -- -D warnings").run()?;
     Ok(())
 }
