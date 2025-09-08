@@ -20,13 +20,11 @@ futures.workspace = true
 globset.workspace = true
 ignore.workspace = true
 itertools.workspace = true
+http.workspace = true
 human-panic.workspace = true
 lazy-regex.workspace = true
 log.workspace = true
-octorust = { workspace = true, features = ["default"]}
-reqwest = { workspace = true, features = ["rustls-tls"]}
-reqwest-middleware.workspace = true
-reqwest-retry.workspace = true
+octocrab.workspace = true
 tokio = { workspace = true, features = ["full"]}
 
 [dev-dependencies]
