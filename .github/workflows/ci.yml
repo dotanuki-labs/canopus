@@ -148,9 +148,38 @@ jobs:
       - name: Check issues with supply chain
         run: cargo xtasks security
 
+  compatibility-tests:
+    needs: rust-build
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ ubuntu-22.04, macos-13 ]
+
+    steps:
+      - name: Project Checkout
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+
+      - name: Fetch executable from previous build
+        uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5.0.0
+        with:
+          path: artifacts
+
+      - name: Compatibility check (macOS)
+        if: ${{ runner.os == 'macOS'}}
+        run: |
+          chmod +x ./artifacts/canopus-binaries-macOS/canopus-x86_64-apple-darwin
+          ./artifacts/canopus-binaries-macOS/canopus-x86_64-apple-darwin --help
+
+      - name: Compatibility check (Linux)
+        if: ${{ runner.os == 'Linux'}}
+        run: |
+          chmod +x ./artifacts/canopus-binaries-Linux/canopus-x86_64-unknown-linux-musl
+          ./artifacts/canopus-binaries-Linux/canopus-x86_64-unknown-linux-musl --help
+
+
   all-checks:
     runs-on: ubuntu-24.04
-    needs: [docs-lint, docker-build, rust-artifacts, rust-security]
+    needs: [docs-lint, docker-build, rust-artifacts, rust-security, compatibility-tests]
     steps:
       - name: Report success
         run: echo "Great job ✅"
