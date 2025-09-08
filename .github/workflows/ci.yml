@@ -94,6 +94,8 @@ jobs:
 
       - name: Setup CI
         uses: ./.github/actions/setup-rust
+        with:
+          install-extra-tools: true
 
       - name: Generates build artifacts
         run: cargo xtasks artifacts binaries
