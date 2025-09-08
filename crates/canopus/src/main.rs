@@ -9,10 +9,14 @@ use octorust::Client;
 use octorust::auth::Credentials;
 use policies::ExponentialBackoff;
 use reqwest_retry::policies;
+use tikv_jemallocator::Jemalloc;
 
 mod canopus;
 mod core;
 mod infra;
+
+#[global_allocator]
+static GLOBAL: Jemalloc = Jemalloc;
 
 fn create_canopus() -> anyhow::Result<Canopus> {
     // Configuration for the underlying HTTP client

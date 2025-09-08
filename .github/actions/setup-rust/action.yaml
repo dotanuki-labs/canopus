@@ -31,4 +31,4 @@ runs:
           if:  ${{ runner.os == 'Linux' && inputs.install-extra-tools != 'false' }}
           shell: bash
           run: |
-            sudo apt-get install -qy binutils-aarch64-linux-gnu gcc-aarch64-linux-gnu g++-aarch64-linux-gnu pkg-config libssl-dev
+            sudo apt-get install -qy binutils-aarch64-linux-gnu gcc-aarch64-linux-gnu g++-aarch64-linux-gnu pkg-config libssl-dev musl-dev musl-tools
