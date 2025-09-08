@@ -4,9 +4,9 @@
 use crate::core::errors::ConsistencyIssue;
 use crate::core::errors::ConsistencyIssue::CannotListMembersInTheOrganization;
 use crate::core::models::handles::{GithubIdentityHandle, GithubTeamHandle};
-use futures::TryFutureExt;
+use http::StatusCode;
 use itertools::Itertools;
-use octorust::{ClientError, StatusCode, types};
+use octocrab::Page;
 
 pub trait CheckGithubConsistency {
     async fn github_identity(&self, organization: &str, handle: &GithubIdentityHandle) -> Result<(), ConsistencyIssue>;
@@ -15,7 +15,7 @@ pub trait CheckGithubConsistency {
 }
 
 pub enum GithubConsistencyChecker {
-    ApiBased(octorust::Client),
+    ApiBased(octocrab::Octocrab),
     #[cfg(test)]
     FakeChecks(FakeGithubState),
     #[cfg(test)]
@@ -23,36 +23,68 @@ pub enum GithubConsistencyChecker {
 }
 
 impl GithubConsistencyChecker {
-    async fn find_users_for_organization(
-        &self,
-        github_client: &octorust::Client,
+    async fn get_github_users_per_page(
+        github_client: &octocrab::Octocrab,
+        page: u32,
         organization: &str,
     ) -> Result<Vec<GithubIdentityHandle>, ConsistencyIssue> {
-        let filter = types::OrgsListMembersFilter::All;
-        let role = types::OrgsListMembersRole::All;
+        let members = github_client
+            .orgs(organization)
+            .list_members()
+            .page(page)
+            .per_page(100)
+            .send()
+            .await
+            .or_else(|error| match error {
+                octocrab::Error::GitHub { source, .. } => {
+                    if source.status_code == StatusCode::NOT_FOUND {
+                        Ok(Page::default())
+                    } else {
+                        Err(CannotListMembersInTheOrganization(organization.to_string()))
+                    }
+                },
+                _ => Err(CannotListMembersInTheOrganization(organization.to_string())),
+            })?;
 
-        let all_members = github_client
-            .orgs()
-            .list_all_members(organization, filter, role)
-            .map_err(|_| CannotListMembersInTheOrganization(organization.to_string()))
-            .await?;
-
-        let all_handles = all_members
-            .body
+        let handles = members
             .into_iter()
             .map(|user| GithubIdentityHandle::new(user.login))
             .collect_vec();
+
+        Ok(handles)
+    }
+
+    async fn find_all_users_for_organization(
+        &self,
+        github_client: &octocrab::Octocrab,
+        organization: &str,
+    ) -> Result<Vec<GithubIdentityHandle>, ConsistencyIssue> {
+        let mut all_handles = Vec::new();
+        let mut page = 0;
+
+        loop {
+            page += 1;
+            let handles = Self::get_github_users_per_page(github_client, page, organization).await?;
+
+            if handles.is_empty() {
+                break;
+            }
+
+            all_handles.extend(handles);
+        }
 
         Ok(all_handles)
     }
 
     async fn check_user_on_github(
         &self,
-        github_client: &octorust::Client,
+        github_client: &octocrab::Octocrab,
         organization: &str,
         user: &str,
     ) -> Result<(), ConsistencyIssue> {
-        let users_in_organization = self.find_users_for_organization(github_client, organization).await?;
+        let users_in_organization = self
+            .find_all_users_for_organization(github_client, organization)
+            .await?;
 
         let target_user = GithubIdentityHandle::new(user.to_string());
 
@@ -63,19 +95,20 @@ impl GithubConsistencyChecker {
         }
 
         github_client
-            .users()
-            .get_by_username(user)
+            .users(user)
+            .profile()
             .await
             .map_err(|incoming| {
+                println!("{:?}", incoming);
                 log::info!("Failed to fetch info for {} user on Github", user);
 
                 let handle = target_user.clone();
 
-                let ClientError::HttpError { status, .. } = incoming else {
+                let octocrab::Error::GitHub { source, .. } = incoming else {
                     return ConsistencyIssue::CannotVerifyUser(handle);
                 };
 
-                match status {
+                match source.status_code {
                     StatusCode::NOT_FOUND => ConsistencyIssue::UserDoesNotExist(handle),
                     _ => ConsistencyIssue::CannotVerifyUser(handle),
                 }
@@ -91,24 +124,25 @@ impl GithubConsistencyChecker {
 
     async fn check_team_on_github(
         &self,
-        github_client: &octorust::Client,
+        github_client: &octocrab::Octocrab,
         organization: &str,
         team: &str,
     ) -> Result<(), ConsistencyIssue> {
         github_client
-            .teams()
-            .get_by_name(organization, team)
+            .teams(organization)
+            .get(team)
             .await
             .map_err(|incoming| {
                 log::info!("Failed to fetch info for {}/{} team on Github", organization, team);
 
                 let org_handle = GithubIdentityHandle::new(organization.to_owned());
                 let team_handle = GithubTeamHandle::new(org_handle, team.to_owned());
-                let ClientError::HttpError { status, .. } = incoming else {
+
+                let octocrab::Error::GitHub { source, .. } = incoming else {
                     return ConsistencyIssue::CannotVerifyTeam(team_handle);
                 };
 
-                match status {
+                match source.status_code {
                     StatusCode::NOT_FOUND => ConsistencyIssue::TeamDoesNotExistWithinOrganization(team_handle),
                     _ => ConsistencyIssue::CannotVerifyTeam(team_handle),
                 }
@@ -236,151 +270,160 @@ mod tests {
     use crate::core::models::handles::{GithubIdentityHandle, GithubTeamHandle};
     use crate::infra::github::{CheckGithubConsistency, GithubConsistencyChecker};
     use assertor::{EqualityAssertion, ResultAssertion};
+    use http::Uri;
     use httpmock::{MockServer, Then, When};
     use itertools::Itertools;
-    use octorust::auth::Credentials;
-    use rand::random;
-    use reqwest_retry::policies;
+    use octocrab::service::middleware::retry::RetryConfig;
+    use std::str::FromStr;
 
-    fn create_github_client(base_url: String) -> octorust::Client {
-        let base_http_client = reqwest::Client::builder().build().unwrap();
-        let no_retries = policies::ExponentialBackoff::builder().build_with_max_retries(0);
-        let custom_http_client = reqwest_middleware::ClientBuilder::new(base_http_client)
-            .with(reqwest_retry::RetryTransientMiddleware::new_with_policy(no_retries))
-            .build();
+    struct ServerUriFactory(String);
 
-        let user_agent = format!("{}/{}", env!("CARGO_PKG_NAME"), env!("CARGO_PKG_VERSION"));
-        let github_token = "test-github-pat".to_string();
-        let mut github_client =
-            octorust::Client::custom(user_agent, Credentials::Token(github_token), custom_http_client);
-        github_client.with_host_override(base_url);
-        github_client
+    impl TryInto<Uri> for ServerUriFactory {
+        type Error = http::uri::InvalidUri;
+
+        fn try_into(self) -> Result<Uri, Self::Error> {
+            Uri::from_str(self.0.as_str())
+        }
+    }
+
+    fn create_github_client(base_url: String) -> octocrab::Octocrab {
+        octocrab::Octocrab::builder()
+            .base_uri(ServerUriFactory(base_url))
+            .unwrap()
+            .add_retry_config(RetryConfig::Simple(0))
+            .build()
+            .unwrap()
     }
 
     fn responds_with_existing_github_user(username: &str) -> impl FnOnce(When, Then) {
         move |when, then| {
-            let user_id = random::<u64>();
-            let user = octorust::types::PublicUser {
-                avatar_url: format!("https://avatars.githubusercontent.com/u/{}?v=4", user_id),
-                bio: "".to_string(),
-                blog: "".to_string(),
-                collaborators: 0,
-                company: "".to_string(),
-                created_at: None,
-                disk_usage: 0,
-                email: "".to_string(),
-                events_url: "".to_string(),
-                followers: 0,
-                followers_url: "".to_string(),
-                following: 0,
-                following_url: "".to_string(),
-                gists_url: "".to_string(),
-                gravatar_id: "".to_string(),
-                hireable: false,
-                html_url: "".to_string(),
-                id: user_id as i64,
-                location: "".to_string(),
-                login: username.to_string(),
-                name: username.to_string(),
-                node_id: random::<u64>().to_string(),
-                organizations_url: "".to_string(),
-                owned_private_repos: 0,
-                plan: None,
-                private_gists: 0,
-                public_gists: 0,
-                public_repos: 0,
-                received_events_url: "".to_string(),
-                repos_url: "".to_string(),
-                site_admin: false,
-                starred_url: "".to_string(),
-                subscriptions_url: "".to_string(),
-                suspended_at: None,
-                total_private_repos: 0,
-                twitter_username: "".to_string(),
-                type_: "".to_string(),
-                updated_at: None,
-                url: "".to_string(),
-            };
+            let user_template = r#"{
+                  "login": "<username>",
+                  "id": 1,
+                  "node_id": "MDQ6VXNlcjE=",
+                  "avatar_url": "https://github.com/images/<username>.jpg",
+                  "gravatar_id": "abcdedf",
+                  "url": "https://api.github.com/users/<username>",
+                  "html_url": "https://github.com/<username>",
+                  "followers_url": "https://api.github.com/users/<username>/followers",
+                  "following_url": "https://api.github.com/users/<username>/following",
+                  "gists_url": "https://api.github.com/users/<username>/gists",
+                  "starred_url": "https://api.github.com/users/<username>/starred",
+                  "subscriptions_url": "https://api.github.com/users/<username>/subscriptions",
+                  "organizations_url": "https://api.github.com/users/<username>/orgs",
+                  "repos_url": "https://api.github.com/users/<username>/repos",
+                  "events_url": "https://api.github.com/users/<username>/events",
+                  "received_events_url": "https://api.github.com/users/<username>/received_events",
+                  "type": "User",
+                  "site_admin": false,
+                  "name": "<username>",
+                  "company": "ACME",
+                  "blog": "https://github.com/blog",
+                  "hireable": false,
+                  "public_repos": 0,
+                  "public_gists": 0,
+                  "followers": 0,
+                  "following": 0,
+                  "created_at": "2025-02-10T04:33:00Z",
+                  "updated_at": "2025-03-20T06:55:00Z"
+                }"#;
 
-            let response = serde_json::to_string(&user).unwrap();
+            let user = user_template.replace("<username>", username);
+
+            println!("{user}");
 
             when.method("GET").path(format!("/users/{}", username));
 
             then.status(200)
                 .header("content-type", "application/json; charset=UTF-8")
-                .body(response);
+                .body(user);
         }
     }
 
     fn responds_with_user_not_found_on_github(username: &str) -> impl FnOnce(When, Then) {
+        let not_found = r#"{
+            "message" : "not found"
+        }"#;
+
         move |when, then| {
             when.method("GET").path(format!("/users/{}", username));
 
             then.status(404)
                 .header("content-type", "application/json; charset=UTF-8")
-                .body("not found");
+                .body(not_found);
         }
     }
 
     fn responds_with_team_not_found(organization: &str, team_name: &str) -> impl FnOnce(When, Then) {
+        let not_found = r#"{
+            "message" : "not found"
+        }"#;
+
         move |when, then| {
             when.method("GET")
                 .path(format!("/orgs/{}/teams/{}", organization, team_name));
 
             then.status(404)
                 .header("content-type", "application/json; charset=UTF-8")
-                .body("not found");
+                .body(not_found);
         }
     }
 
     fn responds_with_internal_error(api_path: &str) -> impl FnOnce(When, Then) {
+        let server_crash = r#"{
+            "message" : "unicorns are angry right now"
+        }"#;
+
         move |when, then| {
             when.method("GET").path(api_path);
 
             then.status(500)
                 .header("content-type", "application/json; charset=UTF-8")
-                .body("Angry unicorn");
+                .body(server_crash);
         }
     }
 
     fn responds_with_members_of_an_organization(organization: &str, usernames: Vec<&str>) -> impl FnOnce(When, Then) {
+        let member_template = r#"
+                  {
+                    "login": "<username>",
+                    "id": 0,
+                    "node_id": "<username>",
+                    "avatar_url": "https://github.com/images/<username>.jpeg",
+                    "gravatar_id": "https://gravatar.com/images/<username>.jpeg",
+                    "url": "https://api.github.com/users/<username>",
+                    "html_url": "https://github.com/<username>",
+                    "followers_url": "https://api.github.com/users/<username>/followers",
+                    "following_url": "https://api.github.com/users/<username>/following",
+                    "gists_url": "https://api.github.com/users/<username>/gists",
+                    "starred_url": "https://api.github.com/users/<username>/starred",
+                    "subscriptions_url": "https://api.github.com/users/<username>/subscriptions",
+                    "organizations_url": "https://api.github.com/users/<username>/orgs",
+                    "repos_url": "https://api.github.com/users/<username>/repos",
+                    "events_url": "https://api.github.com/users/<username>/events",
+                    "received_events_url": "https://api.github.com/users/<username>/received_events",
+                    "type": "User",
+                    "site_admin": false
+                  }
+            "#;
+
         move |when, then| {
             let users = usernames
                 .into_iter()
-                .map(|username| {
-                    let user_id = random::<u64>();
+                .map(|username| member_template.replace("<username>", username))
+                .collect_vec()
+                .join(",");
 
-                    octorust::types::SimpleUser {
-                        avatar_url: format!("https://avatars.githubusercontent.com/u/{}?v=4", user_id),
-                        email: "".to_string(),
-                        events_url: "".to_string(),
-                        followers_url: "".to_string(),
-                        following_url: "".to_string(),
-                        gists_url: "".to_string(),
-                        gravatar_id: "".to_string(),
-                        html_url: "".to_string(),
-                        id: user_id as i64,
-                        login: username.to_string(),
-                        name: "".to_string(),
-                        node_id: "".to_string(),
-                        organizations_url: format!("https://github.com/{}", organization),
-                        received_events_url: "".to_string(),
-                        repos_url: "".to_string(),
-                        site_admin: false,
-                        starred_at: "".to_string(),
-                        starred_url: "".to_string(),
-                        subscriptions_url: "".to_string(),
-                        type_: "".to_string(),
-                        url: "".to_string(),
-                    }
-                })
-                .collect_vec();
+            let json = format!("[{}]", users);
 
-            when.method("GET").path(format!("/orgs/{}/members", organization));
+            when.method("GET")
+                .path(format!("/orgs/{}/members", organization))
+                .query_param("page", "1")
+                .query_param("per_page", "100");
 
             then.status(200)
                 .header("content-type", "application/json; charset=UTF-8")
-                .body(serde_json::to_string(&users).unwrap());
+                .body(json);
         }
     }
 

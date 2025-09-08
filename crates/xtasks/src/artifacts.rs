@@ -56,19 +56,12 @@ fn build_targets(shell: &Shell) -> anyhow::Result<()> {
             println!("Build params = {:?}", actual_params);
 
             for (arch, target) in actual_params {
-                if is_linux_gha_runner {
-                    let current_dir = env::current_dir()?;
-                    let volume = format!("{}:/home/rust/src", current_dir.to_str().unwrap());
-                    let docker_image = format!("docker.io/blackdex/rust-musl:{arch}-musl");
-                    cmd!(shell, "docker run --rm -v {volume} {docker_image} cargo build --release --target {arch}-{target} --package canopus").run()?;
-                } else {
-                    cmd!(shell, "rustup target add {arch}-{target}").run()?;
-                    cmd!(
-                        shell,
-                        "cargo build --release --target {arch}-{target} --package canopus"
-                    )
-                    .run()?;
-                }
+                cmd!(shell, "rustup target add {arch}-{target}").run()?;
+                cmd!(
+                    shell,
+                    "cargo build --release --target {arch}-{target} --package canopus"
+                )
+                .run()?;
 
                 let binary = format!("target/{arch}-{target}/release/canopus");
                 let destination = format!("{DEFAULT_ARTIFACTS_DIR}/canopus-{arch}-{target}");

@@ -12,8 +12,12 @@ rustflags = [
     "-Wrust_2018_idioms",
 ]
 
-[target.aarch64-unknown-linux-gnu]
+[target.x86_64-unknown-linux-musl]
+rustflags = ["-Ctarget-feature=+crt-static"]
+
+[target.aarch64-unknown-linux-musl]
 linker = "aarch64-linux-gnu-gcc"
+rustflags = ["-Ctarget-feature=+crt-static"]
 
 [alias]
 xtasks = "run --manifest-path ./crates/xtasks/Cargo.toml --"
