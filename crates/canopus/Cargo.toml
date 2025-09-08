@@ -26,14 +26,10 @@ lazy-regex.workspace = true
 log.workspace = true
 octocrab.workspace = true
 tokio = { workspace = true, features = ["full"] }
-url = "2.5.7"
 
 [dev-dependencies]
 assert_cmd.workspace = true
 assertor.workspace = true
-fake = { workspace = true, features = ["http", "chrono", "uuid"] }
 indoc.workspace = true
 httpmock.workspace = true
-rand = "=0.9.2"
-serde_json.workspace = true
 temp-dir.workspace = true
