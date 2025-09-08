@@ -6,7 +6,7 @@ use crate::core::errors::ConsistencyIssue::CannotListMembersInTheOrganization;
 use crate::core::models::handles::{GithubIdentityHandle, GithubTeamHandle};
 use http::StatusCode;
 use itertools::Itertools;
-use octocrab::{Error, Page};
+use octocrab::Page;
 
 pub trait CheckGithubConsistency {
     async fn github_identity(&self, organization: &str, handle: &GithubIdentityHandle) -> Result<(), ConsistencyIssue>;
@@ -36,7 +36,7 @@ impl GithubConsistencyChecker {
             .send()
             .await
             .or_else(|error| match error {
-                Error::GitHub { source, .. } => {
+                octocrab::Error::GitHub { source, .. } => {
                     if source.status_code == StatusCode::NOT_FOUND {
                         Ok(Page::default())
                     } else {
@@ -99,6 +99,7 @@ impl GithubConsistencyChecker {
             .profile()
             .await
             .map_err(|incoming| {
+                println!("{:?}", incoming);
                 log::info!("Failed to fetch info for {} user on Github", user);
 
                 let handle = target_user.clone();
@@ -263,317 +264,326 @@ impl FakeGithubState {
     }
 }
 
-// #[cfg(test)]
-// mod tests {
-//     use crate::core::errors::ConsistencyIssue;
-//     use crate::core::models::handles::{GithubIdentityHandle, GithubTeamHandle};
-//     use crate::infra::github::{CheckGithubConsistency, GithubConsistencyChecker};
-//     use assertor::{EqualityAssertion, ResultAssertion};
-//     use httpmock::{MockServer, Then, When};
-//     use itertools::Itertools;
-//     use octorust::auth::Credentials;
-//     use rand::random;
-//     use reqwest_retry::policies;
-//
-//     fn create_github_client(base_url: String) -> octorust::Client {
-//         let base_http_client = reqwest::Client::builder().build().unwrap();
-//         let no_retries = policies::ExponentialBackoff::builder().build_with_max_retries(0);
-//         let custom_http_client = reqwest_middleware::ClientBuilder::new(base_http_client)
-//             .with(reqwest_retry::RetryTransientMiddleware::new_with_policy(no_retries))
-//             .build();
-//
-//         let user_agent = format!("{}/{}", env!("CARGO_PKG_NAME"), env!("CARGO_PKG_VERSION"));
-//         let github_token = "test-github-pat".to_string();
-//         let mut github_client =
-//             octorust::Client::custom(user_agent, Credentials::Token(github_token), custom_http_client);
-//         github_client.with_host_override(base_url);
-//         github_client
-//     }
-//
-//     fn responds_with_existing_github_user(username: &str) -> impl FnOnce(When, Then) {
-//         move |when, then| {
-//             let user_id = random::<u64>();
-//             let user = octorust::types::PublicUser {
-//                 avatar_url: format!("https://avatars.githubusercontent.com/u/{}?v=4", user_id),
-//                 bio: "".to_string(),
-//                 blog: "".to_string(),
-//                 collaborators: 0,
-//                 company: "".to_string(),
-//                 created_at: None,
-//                 disk_usage: 0,
-//                 email: "".to_string(),
-//                 events_url: "".to_string(),
-//                 followers: 0,
-//                 followers_url: "".to_string(),
-//                 following: 0,
-//                 following_url: "".to_string(),
-//                 gists_url: "".to_string(),
-//                 gravatar_id: "".to_string(),
-//                 hireable: false,
-//                 html_url: "".to_string(),
-//                 id: user_id as i64,
-//                 location: "".to_string(),
-//                 login: username.to_string(),
-//                 name: username.to_string(),
-//                 node_id: random::<u64>().to_string(),
-//                 organizations_url: "".to_string(),
-//                 owned_private_repos: 0,
-//                 plan: None,
-//                 private_gists: 0,
-//                 public_gists: 0,
-//                 public_repos: 0,
-//                 received_events_url: "".to_string(),
-//                 repos_url: "".to_string(),
-//                 site_admin: false,
-//                 starred_url: "".to_string(),
-//                 subscriptions_url: "".to_string(),
-//                 suspended_at: None,
-//                 total_private_repos: 0,
-//                 twitter_username: "".to_string(),
-//                 type_: "".to_string(),
-//                 updated_at: None,
-//                 url: "".to_string(),
-//             };
-//
-//             let response = serde_json::to_string(&user).unwrap();
-//
-//             when.method("GET").path(format!("/users/{}", username));
-//
-//             then.status(200)
-//                 .header("content-type", "application/json; charset=UTF-8")
-//                 .body(response);
-//         }
-//     }
-//
-//     fn responds_with_user_not_found_on_github(username: &str) -> impl FnOnce(When, Then) {
-//         move |when, then| {
-//             when.method("GET").path(format!("/users/{}", username));
-//
-//             then.status(404)
-//                 .header("content-type", "application/json; charset=UTF-8")
-//                 .body("not found");
-//         }
-//     }
-//
-//     fn responds_with_team_not_found(organization: &str, team_name: &str) -> impl FnOnce(When, Then) {
-//         move |when, then| {
-//             when.method("GET")
-//                 .path(format!("/orgs/{}/teams/{}", organization, team_name));
-//
-//             then.status(404)
-//                 .header("content-type", "application/json; charset=UTF-8")
-//                 .body("not found");
-//         }
-//     }
-//
-//     fn responds_with_internal_error(api_path: &str) -> impl FnOnce(When, Then) {
-//         move |when, then| {
-//             when.method("GET").path(api_path);
-//
-//             then.status(500)
-//                 .header("content-type", "application/json; charset=UTF-8")
-//                 .body("Angry unicorn");
-//         }
-//     }
-//
-//     fn responds_with_members_of_an_organization(organization: &str, usernames: Vec<&str>) -> impl FnOnce(When, Then) {
-//         move |when, then| {
-//             let users = usernames
-//                 .into_iter()
-//                 .map(|username| {
-//                     let user_id = random::<u64>();
-//
-//                     octorust::types::SimpleUser {
-//                         avatar_url: format!("https://avatars.githubusercontent.com/u/{}?v=4", user_id),
-//                         email: "".to_string(),
-//                         events_url: "".to_string(),
-//                         followers_url: "".to_string(),
-//                         following_url: "".to_string(),
-//                         gists_url: "".to_string(),
-//                         gravatar_id: "".to_string(),
-//                         html_url: "".to_string(),
-//                         id: user_id as i64,
-//                         login: username.to_string(),
-//                         name: "".to_string(),
-//                         node_id: "".to_string(),
-//                         organizations_url: format!("https://github.com/{}", organization),
-//                         received_events_url: "".to_string(),
-//                         repos_url: "".to_string(),
-//                         site_admin: false,
-//                         starred_at: "".to_string(),
-//                         starred_url: "".to_string(),
-//                         subscriptions_url: "".to_string(),
-//                         type_: "".to_string(),
-//                         url: "".to_string(),
-//                     }
-//                 })
-//                 .collect_vec();
-//
-//             when.method("GET").path(format!("/orgs/{}/members", organization));
-//
-//             then.status(200)
-//                 .header("content-type", "application/json; charset=UTF-8")
-//                 .body(serde_json::to_string(&users).unwrap());
-//         }
-//     }
-//
-//     #[tokio::test]
-//     async fn should_report_user_found_within_organization_members() {
-//         let mock_server = MockServer::start();
-//
-//         let github_organization = "dotanuki-labs";
-//         let members = vec!["ubiratansoares", "dotanuki-bot"];
-//
-//         let returns_members = responds_with_members_of_an_organization(github_organization, members);
-//
-//         let organization_members = mock_server.mock(returns_members);
-//
-//         let consistency_checker = GithubConsistencyChecker::ApiBased(create_github_client(mock_server.base_url()));
-//
-//         let identity = GithubIdentityHandle::new("ubiratansoares".to_string());
-//         let check = consistency_checker
-//             .github_identity(github_organization, &identity)
-//             .await;
-//
-//         organization_members.assert();
-//         assertor::assert_that!(check).is_ok();
-//     }
-//
-//     #[tokio::test]
-//     async fn should_report_user_outside_github_organization() {
-//         let mock_server = MockServer::start();
-//
-//         let github_organization = "dotanuki-labs";
-//         let members = vec!["ubiratansoares", "dotanuki-bot"];
-//         let outside_organization = "itto-ogami";
-//
-//         let returns_members = responds_with_members_of_an_organization(github_organization, members);
-//
-//         let returns_user_on_github = responds_with_existing_github_user(outside_organization);
-//
-//         let organization_members = mock_server.mock(returns_members);
-//         let exists_on_github = mock_server.mock(returns_user_on_github);
-//
-//         let consistency_checker = GithubConsistencyChecker::ApiBased(create_github_client(mock_server.base_url()));
-//
-//         let identity = GithubIdentityHandle::new(outside_organization.to_string());
-//         let check = consistency_checker
-//             .github_identity(github_organization, &identity)
-//             .await;
-//
-//         let expected = ConsistencyIssue::UserDoesNotBelongToOrganization(identity);
-//
-//         organization_members.assert();
-//         exists_on_github.assert();
-//         assertor::assert_that!(check).is_equal_to(Err(expected));
-//     }
-//
-//     #[tokio::test]
-//     async fn should_report_user_not_found() {
-//         let mock_server = MockServer::start();
-//
-//         let github_organization = "dotanuki-labs";
-//         let members = vec!["ubiratansoares", "dotanuki-bot"];
-//         let not_on_github = "itto-ogami";
-//
-//         let returns_members = responds_with_members_of_an_organization(github_organization, members);
-//
-//         let returns_user_not_found = responds_with_user_not_found_on_github(not_on_github);
-//
-//         let organization_members = mock_server.mock(returns_members);
-//         let user_not_found = mock_server.mock(returns_user_not_found);
-//
-//         let consistency_checker = GithubConsistencyChecker::ApiBased(create_github_client(mock_server.base_url()));
-//
-//         let identity = GithubIdentityHandle::new(not_on_github.to_string());
-//         let check = consistency_checker
-//             .github_identity(github_organization, &identity)
-//             .await;
-//
-//         let expected = ConsistencyIssue::UserDoesNotExist(identity);
-//
-//         organization_members.assert();
-//         user_not_found.assert();
-//         assertor::assert_that!(check).is_equal_to(Err(expected));
-//     }
-//
-//     #[tokio::test]
-//     async fn should_report_team_does_not_match() {
-//         let provided_github_organization = "dotanuki-labs";
-//         let misspelled_organization = "dotanuki";
-//         let github_team = "crabbers";
-//
-//         let consistency_checker =
-//             GithubConsistencyChecker::ApiBased(create_github_client("https://api.github.com".to_string()));
-//
-//         let organization = GithubIdentityHandle::new(misspelled_organization.to_string());
-//         let team_handle = GithubTeamHandle::new(organization, github_team.to_string());
-//         let check = consistency_checker
-//             .github_team(provided_github_organization, &team_handle)
-//             .await;
-//
-//         let expected = ConsistencyIssue::TeamDoesNotMatchWithProvidedOrganization(team_handle);
-//
-//         assertor::assert_that!(check).is_equal_to(Err(expected));
-//     }
-//
-//     #[tokio::test]
-//     async fn should_report_team_not_found() {
-//         let mock_server = MockServer::start();
-//
-//         let github_organization = "dotanuki-labs";
-//         let undefined_team = "crabbers";
-//
-//         let returns_not_found = responds_with_team_not_found(github_organization, undefined_team);
-//
-//         let team_not_found = mock_server.mock(returns_not_found);
-//
-//         let consistency_checker = GithubConsistencyChecker::ApiBased(create_github_client(mock_server.base_url()));
-//
-//         let organization = GithubIdentityHandle::new(github_organization.to_string());
-//         let team_handle = GithubTeamHandle::new(organization, undefined_team.to_string());
-//         let check = consistency_checker.github_team(github_organization, &team_handle).await;
-//
-//         let expected = ConsistencyIssue::TeamDoesNotExistWithinOrganization(team_handle);
-//
-//         team_not_found.assert();
-//         assertor::assert_that!(check).is_equal_to(Err(expected));
-//     }
-//
-//     #[tokio::test]
-//     async fn should_report_user_not_verified() {
-//         let mock_server = MockServer::start();
-//
-//         let returns_internal_error = responds_with_internal_error("/orgs/dotanuki/members");
-//         let internal_server_error = mock_server.mock(returns_internal_error);
-//
-//         let consistency_checker = GithubConsistencyChecker::ApiBased(create_github_client(mock_server.base_url()));
-//
-//         let identity = GithubIdentityHandle::new("ubiratansoares".to_string());
-//         let check = consistency_checker.github_identity("dotanuki", &identity).await;
-//
-//         let expected = ConsistencyIssue::CannotListMembersInTheOrganization("dotanuki".to_string());
-//
-//         internal_server_error.assert();
-//         assertor::assert_that!(check).is_equal_to(Err(expected));
-//     }
-//
-//     #[tokio::test]
-//     async fn should_report_team_not_verified() {
-//         let mock_server = MockServer::start();
-//
-//         let returns_internal_error = responds_with_internal_error("/orgs/dotanuki/teams/crabbers");
-//         let internal_server_error = mock_server.mock(returns_internal_error);
-//
-//         let consistency_checker = GithubConsistencyChecker::ApiBased(create_github_client(mock_server.base_url()));
-//
-//         let organization = GithubIdentityHandle::new("dotanuki".to_string());
-//         let team_handle = GithubTeamHandle::new(organization, "crabbers".to_string());
-//         let check = consistency_checker.github_team("dotanuki", &team_handle).await;
-//
-//         let expected = ConsistencyIssue::CannotVerifyTeam(team_handle);
-//
-//         internal_server_error.assert();
-//         assertor::assert_that!(check).is_equal_to(Err(expected));
-//     }
-// }
+#[cfg(test)]
+mod tests {
+    use crate::core::errors::ConsistencyIssue;
+    use crate::core::models::handles::{GithubIdentityHandle, GithubTeamHandle};
+    use crate::infra::github::{CheckGithubConsistency, GithubConsistencyChecker};
+    use assertor::{EqualityAssertion, ResultAssertion};
+    use http::Uri;
+    use httpmock::{MockServer, Then, When};
+    use itertools::Itertools;
+    use octocrab::service::middleware::retry::RetryConfig;
+    use std::str::FromStr;
+
+    struct ServerUriFactory(String);
+
+    impl TryInto<Uri> for ServerUriFactory {
+        type Error = http::uri::InvalidUri;
+
+        fn try_into(self) -> Result<Uri, Self::Error> {
+            Uri::from_str(self.0.as_str())
+        }
+    }
+
+    fn create_github_client(base_url: String) -> octocrab::Octocrab {
+        octocrab::Octocrab::builder()
+            .base_uri(ServerUriFactory(base_url))
+            .unwrap()
+            .add_retry_config(RetryConfig::Simple(0))
+            .build()
+            .unwrap()
+    }
+
+    fn responds_with_existing_github_user(username: &str) -> impl FnOnce(When, Then) {
+        move |when, then| {
+            let user_template = r#"{
+                  "login": "<username>",
+                  "id": 1,
+                  "node_id": "MDQ6VXNlcjE=",
+                  "avatar_url": "https://github.com/images/<username>.jpg",
+                  "gravatar_id": "abcdedf",
+                  "url": "https://api.github.com/users/<username>",
+                  "html_url": "https://github.com/<username>",
+                  "followers_url": "https://api.github.com/users/<username>/followers",
+                  "following_url": "https://api.github.com/users/<username>/following",
+                  "gists_url": "https://api.github.com/users/<username>/gists",
+                  "starred_url": "https://api.github.com/users/<username>/starred",
+                  "subscriptions_url": "https://api.github.com/users/<username>/subscriptions",
+                  "organizations_url": "https://api.github.com/users/<username>/orgs",
+                  "repos_url": "https://api.github.com/users/<username>/repos",
+                  "events_url": "https://api.github.com/users/<username>/events",
+                  "received_events_url": "https://api.github.com/users/<username>/received_events",
+                  "type": "User",
+                  "site_admin": false,
+                  "name": "<username>",
+                  "company": "ACME",
+                  "blog": "https://github.com/blog",
+                  "hireable": false,
+                  "public_repos": 0,
+                  "public_gists": 0,
+                  "followers": 0,
+                  "following": 0,
+                  "created_at": "2025-02-10T04:33:00Z",
+                  "updated_at": "2025-03-20T06:55:00Z"
+                }"#;
+
+            let user = user_template.replace("<username>", username);
+
+            println!("{user}");
+
+            when.method("GET").path(format!("/users/{}", username));
+
+            then.status(200)
+                .header("content-type", "application/json; charset=UTF-8")
+                .body(user);
+        }
+    }
+
+    fn responds_with_user_not_found_on_github(username: &str) -> impl FnOnce(When, Then) {
+        let not_found = r#"{
+            "message" : "not found"
+        }"#;
+
+        move |when, then| {
+            when.method("GET").path(format!("/users/{}", username));
+
+            then.status(404)
+                .header("content-type", "application/json; charset=UTF-8")
+                .body(not_found);
+        }
+    }
+
+    fn responds_with_team_not_found(organization: &str, team_name: &str) -> impl FnOnce(When, Then) {
+        let not_found = r#"{
+            "message" : "not found"
+        }"#;
+
+        move |when, then| {
+            when.method("GET")
+                .path(format!("/orgs/{}/teams/{}", organization, team_name));
+
+            then.status(404)
+                .header("content-type", "application/json; charset=UTF-8")
+                .body(not_found);
+        }
+    }
+
+    fn responds_with_internal_error(api_path: &str) -> impl FnOnce(When, Then) {
+        let server_crash = r#"{
+            "message" : "unicorns are angry right now"
+        }"#;
+
+        move |when, then| {
+            when.method("GET").path(api_path);
+
+            then.status(500)
+                .header("content-type", "application/json; charset=UTF-8")
+                .body(server_crash);
+        }
+    }
+
+    fn responds_with_members_of_an_organization(organization: &str, usernames: Vec<&str>) -> impl FnOnce(When, Then) {
+        let member_template = r#"
+                  {
+                    "login": "<username>",
+                    "id": 0,
+                    "node_id": "<username>",
+                    "avatar_url": "https://github.com/images/<username>.jpeg",
+                    "gravatar_id": "https://gravatar.com/images/<username>.jpeg",
+                    "url": "https://api.github.com/users/<username>",
+                    "html_url": "https://github.com/<username>",
+                    "followers_url": "https://api.github.com/users/<username>/followers",
+                    "following_url": "https://api.github.com/users/<username>/following",
+                    "gists_url": "https://api.github.com/users/<username>/gists",
+                    "starred_url": "https://api.github.com/users/<username>/starred",
+                    "subscriptions_url": "https://api.github.com/users/<username>/subscriptions",
+                    "organizations_url": "https://api.github.com/users/<username>/orgs",
+                    "repos_url": "https://api.github.com/users/<username>/repos",
+                    "events_url": "https://api.github.com/users/<username>/events",
+                    "received_events_url": "https://api.github.com/users/<username>/received_events",
+                    "type": "User",
+                    "site_admin": false
+                  }
+            "#;
+
+        move |when, then| {
+            let users = usernames
+                .into_iter()
+                .map(|username| member_template.replace("<username>", username))
+                .collect_vec()
+                .join(",");
+
+            let json = format!("[{}]", users);
+
+            when.method("GET")
+                .path(format!("/orgs/{}/members", organization))
+                .query_param("page", "1")
+                .query_param("per_page", "100");
+
+            then.status(200)
+                .header("content-type", "application/json; charset=UTF-8")
+                .body(json);
+        }
+    }
+
+    #[tokio::test]
+    async fn should_report_user_found_within_organization_members() {
+        let mock_server = MockServer::start();
+
+        let github_organization = "dotanuki-labs";
+        let members = vec!["ubiratansoares", "dotanuki-bot"];
+
+        let returns_members = responds_with_members_of_an_organization(github_organization, members);
+
+        let organization_members = mock_server.mock(returns_members);
+
+        let consistency_checker = GithubConsistencyChecker::ApiBased(create_github_client(mock_server.base_url()));
+
+        let identity = GithubIdentityHandle::new("ubiratansoares".to_string());
+        let check = consistency_checker
+            .github_identity(github_organization, &identity)
+            .await;
+
+        organization_members.assert();
+        assertor::assert_that!(check).is_ok();
+    }
+
+    #[tokio::test]
+    async fn should_report_user_outside_github_organization() {
+        let mock_server = MockServer::start();
+
+        let github_organization = "dotanuki-labs";
+        let members = vec!["ubiratansoares", "dotanuki-bot"];
+        let outside_organization = "itto-ogami";
+
+        let returns_members = responds_with_members_of_an_organization(github_organization, members);
+
+        let returns_user_on_github = responds_with_existing_github_user(outside_organization);
+
+        let organization_members = mock_server.mock(returns_members);
+        let exists_on_github = mock_server.mock(returns_user_on_github);
+
+        let consistency_checker = GithubConsistencyChecker::ApiBased(create_github_client(mock_server.base_url()));
+
+        let identity = GithubIdentityHandle::new(outside_organization.to_string());
+        let check = consistency_checker
+            .github_identity(github_organization, &identity)
+            .await;
+
+        let expected = ConsistencyIssue::UserDoesNotBelongToOrganization(identity);
+
+        organization_members.assert();
+        exists_on_github.assert();
+        assertor::assert_that!(check).is_equal_to(Err(expected));
+    }
+
+    #[tokio::test]
+    async fn should_report_user_not_found() {
+        let mock_server = MockServer::start();
+
+        let github_organization = "dotanuki-labs";
+        let members = vec!["ubiratansoares", "dotanuki-bot"];
+        let not_on_github = "itto-ogami";
+
+        let returns_members = responds_with_members_of_an_organization(github_organization, members);
+
+        let returns_user_not_found = responds_with_user_not_found_on_github(not_on_github);
+
+        let organization_members = mock_server.mock(returns_members);
+        let user_not_found = mock_server.mock(returns_user_not_found);
+
+        let consistency_checker = GithubConsistencyChecker::ApiBased(create_github_client(mock_server.base_url()));
+
+        let identity = GithubIdentityHandle::new(not_on_github.to_string());
+        let check = consistency_checker
+            .github_identity(github_organization, &identity)
+            .await;
+
+        let expected = ConsistencyIssue::UserDoesNotExist(identity);
+
+        organization_members.assert();
+        user_not_found.assert();
+        assertor::assert_that!(check).is_equal_to(Err(expected));
+    }
+
+    #[tokio::test]
+    async fn should_report_team_does_not_match() {
+        let provided_github_organization = "dotanuki-labs";
+        let misspelled_organization = "dotanuki";
+        let github_team = "crabbers";
+
+        let consistency_checker =
+            GithubConsistencyChecker::ApiBased(create_github_client("https://api.github.com".to_string()));
+
+        let organization = GithubIdentityHandle::new(misspelled_organization.to_string());
+        let team_handle = GithubTeamHandle::new(organization, github_team.to_string());
+        let check = consistency_checker
+            .github_team(provided_github_organization, &team_handle)
+            .await;
+
+        let expected = ConsistencyIssue::TeamDoesNotMatchWithProvidedOrganization(team_handle);
+
+        assertor::assert_that!(check).is_equal_to(Err(expected));
+    }
+
+    #[tokio::test]
+    async fn should_report_team_not_found() {
+        let mock_server = MockServer::start();
+
+        let github_organization = "dotanuki-labs";
+        let undefined_team = "crabbers";
+
+        let returns_not_found = responds_with_team_not_found(github_organization, undefined_team);
+
+        let team_not_found = mock_server.mock(returns_not_found);
+
+        let consistency_checker = GithubConsistencyChecker::ApiBased(create_github_client(mock_server.base_url()));
+
+        let organization = GithubIdentityHandle::new(github_organization.to_string());
+        let team_handle = GithubTeamHandle::new(organization, undefined_team.to_string());
+        let check = consistency_checker.github_team(github_organization, &team_handle).await;
+
+        let expected = ConsistencyIssue::TeamDoesNotExistWithinOrganization(team_handle);
+
+        team_not_found.assert();
+        assertor::assert_that!(check).is_equal_to(Err(expected));
+    }
+
+    #[tokio::test]
+    async fn should_report_user_not_verified() {
+        let mock_server = MockServer::start();
+
+        let returns_internal_error = responds_with_internal_error("/orgs/dotanuki/members");
+        let internal_server_error = mock_server.mock(returns_internal_error);
+
+        let consistency_checker = GithubConsistencyChecker::ApiBased(create_github_client(mock_server.base_url()));
+
+        let identity = GithubIdentityHandle::new("ubiratansoares".to_string());
+        let check = consistency_checker.github_identity("dotanuki", &identity).await;
+
+        let expected = ConsistencyIssue::CannotListMembersInTheOrganization("dotanuki".to_string());
+
+        internal_server_error.assert();
+        assertor::assert_that!(check).is_equal_to(Err(expected));
+    }
+
+    #[tokio::test]
+    async fn should_report_team_not_verified() {
+        let mock_server = MockServer::start();
+
+        let returns_internal_error = responds_with_internal_error("/orgs/dotanuki/teams/crabbers");
+        let internal_server_error = mock_server.mock(returns_internal_error);
+
+        let consistency_checker = GithubConsistencyChecker::ApiBased(create_github_client(mock_server.base_url()));
+
+        let organization = GithubIdentityHandle::new("dotanuki".to_string());
+        let team_handle = GithubTeamHandle::new(organization, "crabbers".to_string());
+        let check = consistency_checker.github_team("dotanuki", &team_handle).await;
+
+        let expected = ConsistencyIssue::CannotVerifyTeam(team_handle);
+
+        internal_server_error.assert();
+        assertor::assert_that!(check).is_equal_to(Err(expected));
+    }
+}
