@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: MIT
 
 use crate::core::errors::{
-    CodeownersValidationError, ConsistencyIssue, DiagnosticKind, StructuralIssue, ValidationDiagnostic,
+    CodeownersValidationError, ConfigurationIssue, ConsistencyIssue, DiagnosticKind, StructuralIssue,
+    ValidationDiagnostic,
 };
 use crate::core::models::codeowners::{CodeOwners, CodeOwnersContext, CodeOwnersEntry};
 use crate::core::models::config::CanopusConfig;
@@ -29,21 +30,14 @@ impl CodeOwnersValidator {
         let codeowners = CodeOwners::try_from(codeowners_file.contents.as_str())?;
         log::info!("Syntax errors : not found");
 
-        let github_organization = canopus_config.github_organization.as_str();
-        let offline_checks_only = canopus_config.offline_checks_only.unwrap_or(false);
+        let gh_org = canopus_config.github_organization.as_str();
 
-        let validations = if offline_checks_only {
-            vec![
-                self.check_non_matching_glob_patterns(&codeowners, &self.path_walker.walk(project_root)),
-                self.check_duplicated_owners(&codeowners),
-            ]
-        } else {
-            vec![
-                self.check_non_matching_glob_patterns(&codeowners, &self.path_walker.walk(project_root)),
-                self.check_duplicated_owners(&codeowners),
-                self.check_github_consistency(github_organization, &codeowners).await,
-            ]
-        };
+        let validations = vec![
+            self.check_non_matching_glob_patterns(&codeowners, &self.path_walker.walk(project_root)),
+            self.check_duplicated_owners(&codeowners),
+            self.check_github_only_owners(&codeowners, canopus_config),
+            self.check_github_consistency(gh_org, &codeowners, canopus_config).await,
+        ];
 
         if validations.iter().all(|check| check.is_ok()) {
             return Ok(());
@@ -143,7 +137,49 @@ impl CodeOwnersValidator {
         Ok(())
     }
 
-    async fn check_github_consistency(&self, organization: &str, code_owners: &CodeOwners) -> anyhow::Result<()> {
+    fn check_github_only_owners(&self, code_owners: &CodeOwners, canopus_config: &CanopusConfig) -> anyhow::Result<()> {
+        if !canopus_config.github_owners_only.unwrap_or(false) {
+            return Ok(());
+        };
+
+        let email_owners = code_owners
+            .unique_owners()
+            .into_iter()
+            .filter(|owner| matches!(owner, Owner::EmailAddress(_)))
+            .collect_vec();
+
+        if email_owners.is_empty() {
+            log::info!("Email owners : not found");
+            return Ok(());
+        };
+
+        let diagnostics = email_owners
+            .into_iter()
+            .map(|owner| {
+                ValidationDiagnostic::builder()
+                    .kind(DiagnosticKind::Configuration(ConfigurationIssue::EmailOwnerNotAllowed))
+                    .line_number(code_owners.occurrences(owner)[0])
+                    .message("email owner is not allowed".to_string())
+                    .build()
+            })
+            .collect_vec();
+
+        log::info!("Found owners defined by email, although not allowed");
+        bail!(CodeownersValidationError::with(diagnostics))
+    }
+
+    async fn check_github_consistency(
+        &self,
+        organization: &str,
+        code_owners: &CodeOwners,
+        canopus_config: &CanopusConfig,
+    ) -> anyhow::Result<()> {
+        let offline_checks_only = canopus_config.offline_checks_only.unwrap_or(false);
+
+        if offline_checks_only {
+            return Ok(());
+        }
+
         let unique_ownerships = code_owners.unique_owners();
 
         let consistency_checks = unique_ownerships
@@ -332,7 +368,7 @@ mod structural_validation_tests {
 
         let config = CanopusConfig {
             github_organization: "dotanuki-labs".to_string(),
-            offline_checks_only: None,
+            ..Default::default()
         };
 
         let validation = validator.validate_codeowners(&context, &config).await;
@@ -351,7 +387,7 @@ mod structural_validation_tests {
 
         let config = CanopusConfig {
             github_organization: "dotanuki-labs".to_string(),
-            offline_checks_only: None,
+            ..Default::default()
         };
 
         let validation = validator.validate_codeowners(&context, &config).await;
@@ -378,7 +414,7 @@ mod structural_validation_tests {
 
         let config = CanopusConfig {
             github_organization: "dotanuki-labs".to_string(),
-            offline_checks_only: None,
+            ..Default::default()
         };
 
         let validation = validator.validate_codeowners(&context, &config).await;
@@ -405,7 +441,7 @@ mod structural_validation_tests {
 
         let config = CanopusConfig {
             github_organization: "dotanuki-labs".to_string(),
-            offline_checks_only: None,
+            ..Default::default()
         };
 
         let validation = validator.validate_codeowners(&context, &config).await;
@@ -441,7 +477,7 @@ mod structural_validation_tests {
 
         let config = CanopusConfig {
             github_organization: "dotanuki-labs".to_string(),
-            offline_checks_only: None,
+            ..Default::default()
         };
 
         let validation = validator.validate_codeowners(&context, &config).await;
@@ -472,7 +508,7 @@ mod structural_validation_tests {
 
         let config = CanopusConfig {
             github_organization: "dotanuki-labs".to_string(),
-            offline_checks_only: None,
+            ..Default::default()
         };
 
         let validation = validator.validate_codeowners(&context, &config).await;
@@ -503,7 +539,7 @@ mod structural_validation_tests {
 
         let config = CanopusConfig {
             github_organization: "dotanuki-labs".to_string(),
-            offline_checks_only: None,
+            ..Default::default()
         };
 
         let validation = validator.validate_codeowners(&context, &config).await;
@@ -522,29 +558,6 @@ mod structural_validation_tests {
 
         let expected = CodeownersValidationError::with(vec![dangling_glob, duplicated_ownership]);
         assertor::assert_that!(validation.into()).is_equal_to(expected);
-    }
-
-    #[tokio::test]
-    async fn should_honor_offline_checks_only() {
-        let contents = indoc! {"
-            *.rs    @org/rustaceans
-        "};
-
-        let project_paths = vec!["main.rs"];
-
-        let context = test_builders::codeowners_attributes(contents);
-
-        // Forces panic if any Github consistency checks are used
-        let validator = test_builders::panics_for_online_checks_validator(project_paths);
-
-        let config = CanopusConfig {
-            github_organization: "dotanuki-labs".to_string(),
-            offline_checks_only: Some(true),
-        };
-
-        let validation = validator.validate_codeowners(&context, &config).await;
-
-        assertor::assert_that!(validation).is_ok();
     }
 }
 
@@ -577,7 +590,7 @@ mod consistency_validation_tests {
 
         let config = CanopusConfig {
             github_organization: "dotanuki-labs".to_string(),
-            offline_checks_only: None,
+            ..Default::default()
         };
 
         let validation = validator.validate_codeowners(&context, &config).await;
@@ -603,7 +616,7 @@ mod consistency_validation_tests {
 
         let config = CanopusConfig {
             github_organization: "dotanuki-labs".to_string(),
-            offline_checks_only: None,
+            ..Default::default()
         };
 
         let validation = validator.validate_codeowners(&context, &config).await;
@@ -638,7 +651,7 @@ mod consistency_validation_tests {
 
         let config = CanopusConfig {
             github_organization: "dotanuki-labs".to_string(),
-            offline_checks_only: None,
+            ..Default::default()
         };
 
         let validation = validator.validate_codeowners(&context, &config).await;
@@ -650,6 +663,71 @@ mod consistency_validation_tests {
             .build();
 
         let expected = CodeownersValidationError::from(user_not_found);
+        assertor::assert_that!(validation.into()).is_equal_to(expected);
+    }
+}
+
+#[cfg(test)]
+mod configuration_aware_tests {
+    use crate::canopus::validation::test_builders;
+    use crate::core::errors::test_helpers::DiagnosticKindFactory;
+    use crate::core::errors::{CodeownersValidationError, ValidationDiagnostic};
+    use crate::core::models::config::CanopusConfig;
+    use assertor::{EqualityAssertion, ResultAssertion};
+    use indoc::indoc;
+
+    #[tokio::test]
+    async fn should_honor_offline_checks_only() {
+        let contents = indoc! {"
+            *.rs    @org/rustaceans
+        "};
+
+        let project_paths = vec!["main.rs"];
+
+        let context = test_builders::codeowners_attributes(contents);
+
+        // Forces panic if any Github consistency checks are used
+        let validator = test_builders::panics_for_online_checks_validator(project_paths);
+
+        let config = CanopusConfig {
+            github_organization: "dotanuki-labs".to_string(),
+            offline_checks_only: Some(true),
+            ..Default::default()
+        };
+
+        let validation = validator.validate_codeowners(&context, &config).await;
+
+        assertor::assert_that!(validation).is_ok();
+    }
+
+    #[tokio::test]
+    async fn should_honor_github_owners_only() {
+        let contents = indoc! {"
+            *.rs    me@hakagi.dev
+        "};
+
+        let project_paths = vec!["main.rs"];
+
+        let context = test_builders::codeowners_attributes(contents);
+
+        // Forces panic if any Github consistency checks are used
+        let validator = test_builders::panics_for_online_checks_validator(project_paths);
+
+        let config = CanopusConfig {
+            github_organization: "dotanuki-labs".to_string(),
+            github_owners_only: Some(true),
+            offline_checks_only: Some(true),
+        };
+
+        let validation = validator.validate_codeowners(&context, &config).await;
+
+        let email_owner_not_allowed = ValidationDiagnostic::builder()
+            .kind(DiagnosticKindFactory::github_owners_only())
+            .line_number(0)
+            .description("email owner is not allowed")
+            .build();
+
+        let expected = CodeownersValidationError::from(email_owner_not_allowed);
         assertor::assert_that!(validation.into()).is_equal_to(expected);
     }
 }
