@@ -27,6 +27,7 @@ fn create_canopus() -> anyhow::Result<Canopus> {
         .add_retry_config(RetryConfig::Simple(max_retries_per_request))
         .add_header(http::header::USER_AGENT, user_agent)
         .build()?;
+
     let consistency_checker = GithubConsistencyChecker::ApiBased(github_client);
 
     let path_walker = paths::PathWalker::GitAware;

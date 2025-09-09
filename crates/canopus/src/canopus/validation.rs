@@ -5,6 +5,7 @@ use crate::core::errors::{
     CodeownersValidationError, ConsistencyIssue, DiagnosticKind, StructuralIssue, ValidationDiagnostic,
 };
 use crate::core::models::codeowners::{CodeOwners, CodeOwnersContext, CodeOwnersEntry};
+use crate::core::models::config::CanopusConfig;
 use crate::core::models::handles::Owner;
 use crate::infra::github::{CheckGithubConsistency, GithubConsistencyChecker};
 use crate::infra::paths::{DirWalking, PathWalker};
@@ -22,7 +23,7 @@ impl CodeOwnersValidator {
     pub async fn validate_codeowners(
         &self,
         codeowners_file: CodeOwnersContext,
-        organization_name: &str,
+        canopus_config: CanopusConfig,
     ) -> anyhow::Result<()> {
         let project_root = codeowners_file.project_root.as_path();
         let codeowners = CodeOwners::try_from(codeowners_file.contents.as_str())?;
@@ -31,7 +32,8 @@ impl CodeOwnersValidator {
         let validations = vec![
             self.check_non_matching_glob_patterns(&codeowners, &self.path_walker.walk(project_root)),
             self.check_duplicated_owners(&codeowners),
-            self.check_github_consistency(organization_name, &codeowners).await,
+            self.check_github_consistency(&canopus_config.github_organization, &codeowners)
+                .await,
         ];
 
         if validations.iter().all(|check| check.is_ok()) {
@@ -132,7 +134,6 @@ impl CodeOwnersValidator {
         Ok(())
     }
 
-    #[allow(clippy::todo)]
     async fn check_github_consistency(&self, organization: &str, code_owners: &CodeOwners) -> anyhow::Result<()> {
         let unique_ownerships = code_owners.unique_owners();
 
@@ -299,6 +300,7 @@ mod structural_validation_tests {
     use crate::canopus::validation::test_builders;
     use crate::core::errors::test_helpers::DiagnosticKindFactory;
     use crate::core::errors::{CodeownersValidationError, ValidationDiagnostic};
+    use crate::core::models::config::CanopusConfig;
     use assertor::{EqualityAssertion, ResultAssertion};
     use indoc::indoc;
 
@@ -313,7 +315,8 @@ mod structural_validation_tests {
         let context = test_builders::codeowners_attributes(contents);
         let validator = test_builders::structural_only_codeowners_validator(project_paths);
 
-        let validation = validator.validate_codeowners(context, "dotanuki-labs").await;
+        let config = CanopusConfig::new("dotanuki-labs");
+        let validation = validator.validate_codeowners(context, config).await;
 
         assertor::assert_that!(validation).is_ok();
     }
@@ -327,7 +330,8 @@ mod structural_validation_tests {
         let context = test_builders::codeowners_attributes(contents);
         let validator = test_builders::structural_only_codeowners_validator(vec![]);
 
-        let validation = validator.validate_codeowners(context, "dotanuki-labs").await;
+        let config = CanopusConfig::new("dotanuki-labs");
+        let validation = validator.validate_codeowners(context, config).await;
 
         let issue = ValidationDiagnostic::builder()
             .kind(DiagnosticKindFactory::invalid_syntax())
@@ -349,7 +353,8 @@ mod structural_validation_tests {
         let context = test_builders::codeowners_attributes(contents);
         let validator = test_builders::structural_only_codeowners_validator(vec![]);
 
-        let validation = validator.validate_codeowners(context, "dotanuki-labs").await;
+        let config = CanopusConfig::new("dotanuki-labs");
+        let validation = validator.validate_codeowners(context, config).await;
 
         let issue = ValidationDiagnostic::builder()
             .kind(DiagnosticKindFactory::invalid_syntax())
@@ -371,7 +376,8 @@ mod structural_validation_tests {
         let context = test_builders::codeowners_attributes(contents);
         let validator = test_builders::structural_only_codeowners_validator(vec![]);
 
-        let validation = validator.validate_codeowners(context, "dotanuki-labs").await;
+        let config = CanopusConfig::new("dotanuki-labs");
+        let validation = validator.validate_codeowners(context, config).await;
 
         let invalid_glob = ValidationDiagnostic::builder()
             .kind(DiagnosticKindFactory::invalid_syntax())
@@ -402,7 +408,8 @@ mod structural_validation_tests {
         let context = test_builders::codeowners_attributes(contents);
         let validator = test_builders::structural_only_codeowners_validator(project_paths);
 
-        let validation = validator.validate_codeowners(context, "dotanuki-labs").await;
+        let config = CanopusConfig::new("dotanuki-labs");
+        let validation = validator.validate_codeowners(context, config).await;
 
         let issue = ValidationDiagnostic::builder()
             .kind(DiagnosticKindFactory::dangling_glob_pattern())
@@ -428,7 +435,8 @@ mod structural_validation_tests {
         let context = test_builders::codeowners_attributes(contents);
         let validator = test_builders::structural_only_codeowners_validator(project_paths);
 
-        let validation = validator.validate_codeowners(context, "dotanuki-labs").await;
+        let config = CanopusConfig::new("dotanuki-labs");
+        let validation = validator.validate_codeowners(context, config).await;
 
         let duplicated_ownership = ValidationDiagnostic::builder()
             .kind(DiagnosticKindFactory::duplicate_ownership())
@@ -454,7 +462,8 @@ mod structural_validation_tests {
         let context = test_builders::codeowners_attributes(contents);
         let validator = test_builders::structural_only_codeowners_validator(project_paths);
 
-        let validation = validator.validate_codeowners(context, "dotanuki-labs").await;
+        let config = CanopusConfig::new("dotanuki-labs");
+        let validation = validator.validate_codeowners(context, config).await;
 
         let dangling_glob = ValidationDiagnostic::builder()
             .kind(DiagnosticKindFactory::dangling_glob_pattern())
@@ -478,6 +487,7 @@ mod consistency_validation_tests {
     use crate::canopus::validation::test_builders;
     use crate::core::errors::test_helpers::DiagnosticKindFactory;
     use crate::core::errors::{CodeownersValidationError, ValidationDiagnostic};
+    use crate::core::models::config::CanopusConfig;
     use crate::infra::github;
     use assertor::{EqualityAssertion, ResultAssertion};
     use indoc::indoc;
@@ -499,7 +509,8 @@ mod consistency_validation_tests {
         let context = test_builders::codeowners_attributes(contents);
         let validator = test_builders::consistency_aware_codeowners_validator(project_paths, github_state);
 
-        let validation = validator.validate_codeowners(context, "dotanuki-labs").await;
+        let config = CanopusConfig::new("dotanuki-labs");
+        let validation = validator.validate_codeowners(context, config).await;
 
         assertor::assert_that!(validation).is_ok();
     }
@@ -520,7 +531,8 @@ mod consistency_validation_tests {
         let context = test_builders::codeowners_attributes(contents);
         let validator = test_builders::consistency_aware_codeowners_validator(project_paths, github_state);
 
-        let validation = validator.validate_codeowners(context, "dotanuki-labs").await;
+        let config = CanopusConfig::new("dotanuki-labs");
+        let validation = validator.validate_codeowners(context, config).await;
 
         let user_not_found = ValidationDiagnostic::builder()
             .kind(DiagnosticKindFactory::user_does_not_belong_to_organization("ufs"))
@@ -550,7 +562,8 @@ mod consistency_validation_tests {
         let context = test_builders::codeowners_attributes(contents);
         let validator = test_builders::consistency_aware_codeowners_validator(project_paths, github_state);
 
-        let validation = validator.validate_codeowners(context, "dotanuki-labs").await;
+        let config = CanopusConfig::new("dotanuki-labs");
+        let validation = validator.validate_codeowners(context, config).await;
 
         let user_not_found = ValidationDiagnostic::builder()
             .kind(DiagnosticKindFactory::team_does_not_exist("dotanuki-labs", "devops"))

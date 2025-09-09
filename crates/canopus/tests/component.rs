@@ -20,7 +20,7 @@ fn validate_own_codeowners_configuration() {
         .to_str()
         .unwrap();
 
-    let args = ["validate", "-p", project_root, "-o", "dotanuki-labs"];
+    let args = ["validate", "-p", project_root];
 
     sut().args(args).assert().success();
 }
