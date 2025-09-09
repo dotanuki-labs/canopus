@@ -19,15 +19,20 @@ pub struct General {
 
 #[derive(Deserialize, Debug, Default)]
 pub struct Ownership {
-    /// Whether we should accept an email address to identify an owner
-    #[serde(rename(deserialize = "forbid-email-owners"))]
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub forbid_email_owners: Option<bool>,
-
     /// Whether we should enforce only Github teams as owners
     #[serde(rename(deserialize = "enforce-github-teams-owners"))]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub enforce_github_teams_owners: Option<bool>,
+
+    /// Whether we should enforce one owner per Glob pattern
+    #[serde(rename(deserialize = "enforce-one-owner-per-line"))]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub enforce_one_owner_per_line: Option<bool>,
+
+    /// Whether we should accept an email address to identify an owner
+    #[serde(rename(deserialize = "forbid-email-owners"))]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub forbid_email_owners: Option<bool>,
 }
 
 #[derive(Deserialize, Debug, Default)]

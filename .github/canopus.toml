@@ -9,3 +9,4 @@ offline-checks-only = false             # Default : false
 [ownership]
 forbid-email-owners = true              # Default : false
 enforce-github-teams-owners = false     # Default : false
+enforce-one-owner-per-line = true       # Default : false
