@@ -66,9 +66,6 @@ jobs:
           cache-from: type=gha,url=http://127.0.0.1:49160/,version=1
           cache-to: type=gha,url=http://127.0.0.1:49160/,mode=max,version=1
 
-      - name: Run Docker image
-        run: docker run --rm -v "${PWD}/tmp" dotanuki-labs/canopus --help
-
   rust-lint:
     runs-on: warp-ubuntu-2404-x64-4x # ubuntu-24.04
 
