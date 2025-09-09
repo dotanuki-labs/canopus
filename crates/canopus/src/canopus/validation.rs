@@ -34,7 +34,8 @@ impl CodeOwnersValidator {
 
         let validations = vec![
             self.check_non_matching_glob_patterns(&codeowners, &self.path_walker.walk(project_root)),
-            self.check_duplicated_owners(&codeowners),
+            self.check_multiple_owners_per_glob(&codeowners),
+            self.check_multiple_ownership_per_entry(&codeowners, canopus_config),
             self.check_allowed_owners(&codeowners, canopus_config),
             self.check_github_consistency(gh_org, &codeowners, canopus_config).await,
         ];
@@ -53,7 +54,51 @@ impl CodeOwnersValidator {
         bail!(CodeownersValidationError::with(diagnostics));
     }
 
-    fn check_duplicated_owners(&self, code_owners: &CodeOwners) -> anyhow::Result<()> {
+    fn check_multiple_ownership_per_entry(
+        &self,
+        code_owners: &CodeOwners,
+        canopus_config: &CanopusConfig,
+    ) -> anyhow::Result<()> {
+        if !canopus_config.ownership.enforce_one_owner_per_line.unwrap_or(false) {
+            return Ok(());
+        };
+
+        let entries_with_multiple_owners = code_owners
+            .entries
+            .iter()
+            .filter_map(|entry| match entry {
+                CodeOwnersEntry::Rule(ownership) => {
+                    if ownership.owners.len() != 1 {
+                        Some(ownership)
+                    } else {
+                        None
+                    }
+                },
+                _ => None,
+            })
+            .collect_vec();
+
+        if entries_with_multiple_owners.is_empty() {
+            log::info!("All ownership entries have a single owner defined");
+            return Ok(());
+        };
+
+        let diagnostics = entries_with_multiple_owners
+            .iter()
+            .map(|rule| {
+                ValidationDiagnostic::builder()
+                    .kind(DiagnosticKind::Configuration(ConfigurationIssue::OnlyOneOwnerPerEntry))
+                    .line_number(rule.line_number)
+                    .description("Entry defines more than one owner for this glob")
+                    .build()
+            })
+            .collect_vec();
+
+        log::info!("Found some CodeOwners entries with multiple owners for the same glob");
+        bail!(CodeownersValidationError::with(diagnostics))
+    }
+
+    fn check_multiple_owners_per_glob(&self, code_owners: &CodeOwners) -> anyhow::Result<()> {
         let ownerships = &code_owners
             .entries
             .iter()
@@ -787,6 +832,42 @@ mod configuration_aware_tests {
             .build();
 
         let expected = CodeownersValidationError::from(only_team_owner_allowed);
+        assertor::assert_that!(validation.into()).is_equal_to(expected);
+    }
+
+    #[tokio::test]
+    async fn should_enforce_single_owner_per_entry() {
+        let contents = indoc! {"
+            *.rs    @ubiratansoares @dotanukibot
+        "};
+
+        let project_paths = vec!["main.rs"];
+
+        let context = test_builders::codeowners_attributes(contents);
+
+        // Forces panic if any Github consistency checks are used
+        let validator = test_builders::panics_for_online_checks_validator(project_paths);
+
+        let config = CanopusConfig {
+            general: config::General {
+                github_organization: "dotanuki-labs".to_string(),
+                offline_checks_only: Some(true),
+            },
+            ownership: Ownership {
+                enforce_one_owner_per_line: Some(true),
+                ..Default::default()
+            },
+        };
+
+        let validation = validator.validate_codeowners(&context, &config).await;
+
+        let only_one_owner_allowed = ValidationDiagnostic::builder()
+            .kind(DiagnosticKindFactory::single_owner_only())
+            .line_number(0)
+            .description("Entry defines more than one owner for this glob")
+            .build();
+
+        let expected = CodeownersValidationError::from(only_one_owner_allowed);
         assertor::assert_that!(validation.into()).is_equal_to(expected);
     }
 }
