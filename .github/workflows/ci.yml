@@ -51,13 +51,20 @@ jobs:
       - name: Project Checkout
         uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
 
+      - name: Setup Docker buildx
+        uses: docker/setup-buildx-action@v3.11.1
+        with:
+          driver-opts: |
+            network=host
+
       - name: Build Docker image
-        uses: Warpbuilds/build-push-action@v6.0.6
+        uses: docker/build-push-action@v6.18.0
         with:
           context: .
           push: false
-          tags: dotanuki-labs/canopus
-          profile-name: "dotanuki-docker-builder"
+          tags: "dotanuki-labs/canopus:latest"
+          cache-from: type=gha,url=http://127.0.0.1:49160/,version=1
+          cache-to: type=gha,url=http://127.0.0.1:49160/,mode=max,version=1
 
       - name: Run Docker image
         run: docker run --rm -v "${PWD}/tmp" dotanuki-labs/canopus --help
