@@ -35,7 +35,7 @@ impl Canopus {
                 let codeowners_context = CodeOwnersContext::try_from(project_path)?;
                 let canopus_config = CanopusConfig::try_from(codeowners_context.project_root.as_path())?;
                 self.codeowners_validator
-                    .validate_codeowners(codeowners_context, canopus_config)
+                    .validate_codeowners(&codeowners_context, &canopus_config)
                     .await
             },
         }

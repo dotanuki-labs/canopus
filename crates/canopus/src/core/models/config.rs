@@ -9,15 +9,9 @@ use std::path::Path;
 pub struct CanopusConfig {
     #[serde(rename(deserialize = "github-organization"))]
     pub github_organization: String,
-}
-
-impl CanopusConfig {
-    #[cfg(test)]
-    pub fn new(organization: &str) -> Self {
-        Self {
-            github_organization: organization.into(),
-        }
-    }
+    #[serde(rename(deserialize = "offline-checks-only"))]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub offline_checks_only: Option<bool>,
 }
 
 impl TryFrom<&Path> for CanopusConfig {
