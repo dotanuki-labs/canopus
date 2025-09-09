@@ -1,2 +1,11 @@
 # Configuration file for canopus
+# For self-verification purposes, all existing options are
+# listed here, regarding sensible defaults
+
+[general]
 github-organization = "dotanuki-labs"
+offline-checks-only = false             # Default : false
+
+[ownership]
+forbid-email-owners = true              # Default : false
+enforce-github-teams-owners = false     # Default : false

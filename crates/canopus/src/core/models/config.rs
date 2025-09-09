@@ -6,18 +6,34 @@ use serde::Deserialize;
 use std::path::Path;
 
 #[derive(Deserialize, Debug, Default)]
-pub struct CanopusConfig {
+pub struct General {
+    /// The Github organization that owns the target project
     #[serde(rename(deserialize = "github-organization"))]
     pub github_organization: String,
+
+    /// Whether we should run verifications against Github API
     #[serde(rename(deserialize = "offline-checks-only"))]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub offline_checks_only: Option<bool>,
+}
+
+#[derive(Deserialize, Debug, Default)]
+pub struct Ownership {
+    /// Whether we should accept an email address to identify an owner
     #[serde(rename(deserialize = "forbid-email-owners"))]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub forbid_email_owners: Option<bool>,
+
+    /// Whether we should enforce only Github teams as owners
     #[serde(rename(deserialize = "enforce-github-teams-owners"))]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub enforce_github_teams_owners: Option<bool>,
+}
+
+#[derive(Deserialize, Debug, Default)]
+pub struct CanopusConfig {
+    pub general: General,
+    pub ownership: Ownership,
 }
 
 impl TryFrom<&Path> for CanopusConfig {
