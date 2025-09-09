@@ -27,6 +27,7 @@ pub enum ConsistencyIssue {
 #[derive(Clone, Debug, PartialEq)]
 pub enum ConfigurationIssue {
     EmailOwnerNotAllowed,
+    OnlyGithubTeamOwner,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -194,6 +195,10 @@ pub mod test_helpers {
 
         pub fn github_owners_only() -> DiagnosticKind {
             DiagnosticKind::Configuration(ConfigurationIssue::EmailOwnerNotAllowed)
+        }
+
+        pub fn github_team_owners_only() -> DiagnosticKind {
+            DiagnosticKind::Configuration(ConfigurationIssue::OnlyGithubTeamOwner)
         }
     }
 }
