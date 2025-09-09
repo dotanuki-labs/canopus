@@ -20,6 +20,8 @@ pub enum GithubConsistencyChecker {
     FakeChecks(FakeGithubState),
     #[cfg(test)]
     ConsistentState,
+    #[cfg(test)]
+    AlwaysPanic,
 }
 
 impl GithubConsistencyChecker {
@@ -194,6 +196,8 @@ impl CheckGithubConsistency for GithubConsistencyChecker {
             GithubConsistencyChecker::FakeChecks(state) => self.check_registered_fake_user(state, identity.inner()),
             #[cfg(test)]
             GithubConsistencyChecker::ConsistentState => Ok(()),
+            #[cfg(test)]
+            GithubConsistencyChecker::AlwaysPanic => panic!("Unreachable information"),
         }
     }
 
@@ -216,6 +220,8 @@ impl CheckGithubConsistency for GithubConsistencyChecker {
             },
             #[cfg(test)]
             GithubConsistencyChecker::ConsistentState => Ok(()),
+            #[cfg(test)]
+            GithubConsistencyChecker::AlwaysPanic => panic!("Unreachable information"),
         }
     }
 }
