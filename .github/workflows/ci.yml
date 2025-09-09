@@ -51,10 +51,16 @@ jobs:
       - name: Project Checkout
         uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
 
-      - name: Build and run with Docker
-        run: |
-          docker build -t dotanuki-labs/canopus .
-          docker run --rm -v "${PWD}/tmp" dotanuki-labs/canopus --help
+      - name: Build Docker image
+        uses: Warpbuilds/build-push-action@v6.0.6
+        with:
+          context: .
+          push: false
+          tags: dotanuki-labs/canopus
+          profile-name: "dotanuki-docker-builder"
+
+      - name: Run Docker image
+        run: docker run --rm -v "${PWD}/tmp" dotanuki-labs/canopus --help
 
   rust-lint:
     runs-on: warp-ubuntu-2404-x64-4x # ubuntu-24.04
