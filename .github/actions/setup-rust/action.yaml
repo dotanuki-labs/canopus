@@ -14,7 +14,8 @@ runs:
     using: "composite"
     steps:
         - name: Setup CI caching
-          uses: Swatinem/rust-cache@98c8021b550208e191a6a3145459bfc9fb29c4c0 # v2.8.0
+          # uses: Swatinem/rust-cache@98c8021b550208e191a6a3145459bfc9fb29c4c0 # v2.8.0
+          uses: WarpBuilds/rust-cache@v2.9.0
           with:
               save-if: ${{ github.ref == 'refs/heads/main' }}
 
