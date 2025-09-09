@@ -30,7 +30,7 @@ impl CodeOwnersValidator {
         let codeowners = CodeOwners::try_from(codeowners_file.contents.as_str())?;
         log::info!("Syntax errors : not found");
 
-        let gh_org = canopus_config.github_organization.as_str();
+        let gh_org = canopus_config.general.github_organization.as_str();
 
         let validations = vec![
             self.check_non_matching_glob_patterns(&codeowners, &self.path_walker.walk(project_root)),
@@ -138,11 +138,11 @@ impl CodeOwnersValidator {
     }
 
     fn check_allowed_owners(&self, code_owners: &CodeOwners, canopus_config: &CanopusConfig) -> anyhow::Result<()> {
-        if canopus_config.enforce_github_teams_owners.unwrap_or(false) {
+        if canopus_config.ownership.enforce_github_teams_owners.unwrap_or(false) {
             return self.check_only_github_teams_owners(code_owners);
         };
 
-        if canopus_config.forbid_email_owners.unwrap_or(false) {
+        if canopus_config.ownership.forbid_email_owners.unwrap_or(false) {
             return self.check_non_email_owners(code_owners);
         };
 
@@ -209,7 +209,7 @@ impl CodeOwnersValidator {
         code_owners: &CodeOwners,
         canopus_config: &CanopusConfig,
     ) -> anyhow::Result<()> {
-        let offline_checks_only = canopus_config.offline_checks_only.unwrap_or(false);
+        let offline_checks_only = canopus_config.general.offline_checks_only.unwrap_or(false);
 
         if offline_checks_only {
             return Ok(());
@@ -347,6 +347,8 @@ impl CodeOwnersValidator {
 mod test_builders {
     use crate::canopus::validation::CodeOwnersValidator;
     use crate::core::models::codeowners::CodeOwnersContext;
+    use crate::core::models::config;
+    use crate::core::models::config::CanopusConfig;
     use crate::infra::github::{FakeGithubState, GithubConsistencyChecker};
     use crate::infra::paths::PathWalker;
     use std::path::PathBuf;
@@ -356,6 +358,16 @@ mod test_builders {
             project_root: PathBuf::from("/usr/projects/my-project"),
             location: PathBuf::from("/usr/projects/my-project/.github/CODEOWNERS"),
             contents: contents.to_string(),
+        }
+    }
+
+    pub fn simple_canopus_config(github_organization: &str) -> CanopusConfig {
+        CanopusConfig {
+            general: config::General {
+                github_organization: github_organization.to_string(),
+                ..Default::default()
+            },
+            ..Default::default()
         }
     }
 
@@ -386,7 +398,6 @@ mod structural_validation_tests {
     use crate::canopus::validation::test_builders;
     use crate::core::errors::test_helpers::DiagnosticKindFactory;
     use crate::core::errors::{CodeownersValidationError, ValidationDiagnostic};
-    use crate::core::models::config::CanopusConfig;
     use assertor::{EqualityAssertion, ResultAssertion};
     use indoc::indoc;
 
@@ -401,10 +412,7 @@ mod structural_validation_tests {
         let context = test_builders::codeowners_attributes(contents);
         let validator = test_builders::structural_only_codeowners_validator(project_paths);
 
-        let config = CanopusConfig {
-            github_organization: "dotanuki-labs".to_string(),
-            ..Default::default()
-        };
+        let config = test_builders::simple_canopus_config("dotanuki-labs");
 
         let validation = validator.validate_codeowners(&context, &config).await;
 
@@ -420,10 +428,7 @@ mod structural_validation_tests {
         let context = test_builders::codeowners_attributes(contents);
         let validator = test_builders::structural_only_codeowners_validator(vec![]);
 
-        let config = CanopusConfig {
-            github_organization: "dotanuki-labs".to_string(),
-            ..Default::default()
-        };
+        let config = test_builders::simple_canopus_config("dotanuki-labs");
 
         let validation = validator.validate_codeowners(&context, &config).await;
 
@@ -447,10 +452,7 @@ mod structural_validation_tests {
         let context = test_builders::codeowners_attributes(contents);
         let validator = test_builders::structural_only_codeowners_validator(vec![]);
 
-        let config = CanopusConfig {
-            github_organization: "dotanuki-labs".to_string(),
-            ..Default::default()
-        };
+        let config = test_builders::simple_canopus_config("dotanuki-labs");
 
         let validation = validator.validate_codeowners(&context, &config).await;
 
@@ -474,10 +476,7 @@ mod structural_validation_tests {
         let context = test_builders::codeowners_attributes(contents);
         let validator = test_builders::structural_only_codeowners_validator(vec![]);
 
-        let config = CanopusConfig {
-            github_organization: "dotanuki-labs".to_string(),
-            ..Default::default()
-        };
+        let config = test_builders::simple_canopus_config("dotanuki-labs");
 
         let validation = validator.validate_codeowners(&context, &config).await;
 
@@ -510,10 +509,7 @@ mod structural_validation_tests {
         let context = test_builders::codeowners_attributes(contents);
         let validator = test_builders::structural_only_codeowners_validator(project_paths);
 
-        let config = CanopusConfig {
-            github_organization: "dotanuki-labs".to_string(),
-            ..Default::default()
-        };
+        let config = test_builders::simple_canopus_config("dotanuki-labs");
 
         let validation = validator.validate_codeowners(&context, &config).await;
 
@@ -541,10 +537,7 @@ mod structural_validation_tests {
         let context = test_builders::codeowners_attributes(contents);
         let validator = test_builders::structural_only_codeowners_validator(project_paths);
 
-        let config = CanopusConfig {
-            github_organization: "dotanuki-labs".to_string(),
-            ..Default::default()
-        };
+        let config = test_builders::simple_canopus_config("dotanuki-labs");
 
         let validation = validator.validate_codeowners(&context, &config).await;
 
@@ -572,10 +565,7 @@ mod structural_validation_tests {
         let context = test_builders::codeowners_attributes(contents);
         let validator = test_builders::structural_only_codeowners_validator(project_paths);
 
-        let config = CanopusConfig {
-            github_organization: "dotanuki-labs".to_string(),
-            ..Default::default()
-        };
+        let config = test_builders::simple_canopus_config("dotanuki-labs");
 
         let validation = validator.validate_codeowners(&context, &config).await;
 
@@ -601,7 +591,6 @@ mod consistency_validation_tests {
     use crate::canopus::validation::test_builders;
     use crate::core::errors::test_helpers::DiagnosticKindFactory;
     use crate::core::errors::{CodeownersValidationError, ValidationDiagnostic};
-    use crate::core::models::config::CanopusConfig;
     use crate::infra::github;
     use assertor::{EqualityAssertion, ResultAssertion};
     use indoc::indoc;
@@ -623,10 +612,7 @@ mod consistency_validation_tests {
         let context = test_builders::codeowners_attributes(contents);
         let validator = test_builders::consistency_aware_codeowners_validator(project_paths, github_state);
 
-        let config = CanopusConfig {
-            github_organization: "dotanuki-labs".to_string(),
-            ..Default::default()
-        };
+        let config = test_builders::simple_canopus_config("dotanuki-labs");
 
         let validation = validator.validate_codeowners(&context, &config).await;
 
@@ -649,10 +635,7 @@ mod consistency_validation_tests {
         let context = test_builders::codeowners_attributes(contents);
         let validator = test_builders::consistency_aware_codeowners_validator(project_paths, github_state);
 
-        let config = CanopusConfig {
-            github_organization: "dotanuki-labs".to_string(),
-            ..Default::default()
-        };
+        let config = test_builders::simple_canopus_config("dotanuki-labs");
 
         let validation = validator.validate_codeowners(&context, &config).await;
 
@@ -684,10 +667,7 @@ mod consistency_validation_tests {
         let context = test_builders::codeowners_attributes(contents);
         let validator = test_builders::consistency_aware_codeowners_validator(project_paths, github_state);
 
-        let config = CanopusConfig {
-            github_organization: "dotanuki-labs".to_string(),
-            ..Default::default()
-        };
+        let config = test_builders::simple_canopus_config("dotanuki-labs");
 
         let validation = validator.validate_codeowners(&context, &config).await;
 
@@ -707,7 +687,8 @@ mod configuration_aware_tests {
     use crate::canopus::validation::test_builders;
     use crate::core::errors::test_helpers::DiagnosticKindFactory;
     use crate::core::errors::{CodeownersValidationError, ValidationDiagnostic};
-    use crate::core::models::config::CanopusConfig;
+    use crate::core::models::config;
+    use crate::core::models::config::{CanopusConfig, Ownership};
     use assertor::{EqualityAssertion, ResultAssertion};
     use indoc::indoc;
 
@@ -725,8 +706,10 @@ mod configuration_aware_tests {
         let validator = test_builders::panics_for_online_checks_validator(project_paths);
 
         let config = CanopusConfig {
-            github_organization: "dotanuki-labs".to_string(),
-            offline_checks_only: Some(true),
+            general: config::General {
+                github_organization: "dotanuki-labs".to_string(),
+                offline_checks_only: Some(true),
+            },
             ..Default::default()
         };
 
@@ -749,10 +732,14 @@ mod configuration_aware_tests {
         let validator = test_builders::panics_for_online_checks_validator(project_paths);
 
         let config = CanopusConfig {
-            github_organization: "dotanuki-labs".to_string(),
-            forbid_email_owners: Some(true),
-            offline_checks_only: Some(true),
-            ..Default::default()
+            general: config::General {
+                github_organization: "dotanuki-labs".to_string(),
+                offline_checks_only: Some(true),
+            },
+            ownership: Ownership {
+                forbid_email_owners: Some(true),
+                ..Default::default()
+            },
         };
 
         let validation = validator.validate_codeowners(&context, &config).await;
@@ -781,10 +768,14 @@ mod configuration_aware_tests {
         let validator = test_builders::panics_for_online_checks_validator(project_paths);
 
         let config = CanopusConfig {
-            github_organization: "dotanuki-labs".to_string(),
-            offline_checks_only: Some(true),
-            enforce_github_teams_owners: Some(true),
-            ..Default::default()
+            general: config::General {
+                github_organization: "dotanuki-labs".to_string(),
+                offline_checks_only: Some(true),
+            },
+            ownership: Ownership {
+                enforce_github_teams_owners: Some(true),
+                ..Default::default()
+            },
         };
 
         let validation = validator.validate_codeowners(&context, &config).await;
