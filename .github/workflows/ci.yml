@@ -11,7 +11,7 @@ on:
 
 jobs:
   docs-lint:
-    runs-on: ubuntu-24.04
+    runs-on: warp-ubuntu-2404-x64-2x # ubuntu-24.04
     steps:
       - name: Project Checkout
         uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
@@ -36,7 +36,7 @@ jobs:
 
   docs-build:
     needs: docs-lint
-    runs-on: ubuntu-24.04
+    runs-on: warp-ubuntu-2404-x64-2x # ubuntu-24.04
     steps:
       - name: Project Checkout
         uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
@@ -45,7 +45,7 @@ jobs:
         uses: dotanuki-labs/github-actions/foss/prepare-ghpages@main
 
   docker-build:
-    runs-on: ubuntu-24.04
+    runs-on: warp-ubuntu-2404-x64-4x # ubuntu-24.04
 
     steps:
       - name: Project Checkout
@@ -57,7 +57,7 @@ jobs:
           docker run --rm -v "${PWD}/tmp" dotanuki-labs/canopus --help
 
   rust-lint:
-    runs-on: ubuntu-24.04
+    runs-on: warp-ubuntu-2404-x64-4x # ubuntu-24.04
 
     steps:
       - name: Project Checkout
@@ -67,7 +67,7 @@ jobs:
         run: cargo xtasks sources
 
   rust-tests:
-    runs-on: ubuntu-24.04
+    runs-on: warp-ubuntu-2404-x64-4x # ubuntu-24.04
 
     steps:
       - name: Project Checkout
@@ -86,7 +86,8 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        os: [ ubuntu-24.04, macos-15 ]
+        # os: [ubuntu-24.04, macos-15]
+        os: [ warp-ubuntu-2404-x64-4x, warp-macos-15-arm64-6x ]
 
     steps:
       - name: Project Checkout
@@ -108,7 +109,7 @@ jobs:
 
   rust-artifacts:
     needs: rust-build
-    runs-on: ubuntu-24.04
+    runs-on: warp-ubuntu-2404-x64-4x # ubuntu-24.04
 
     steps:
       - name: Project Checkout
@@ -139,7 +140,7 @@ jobs:
 
   rust-security:
     needs: rust-build
-    runs-on: ubuntu-24.04
+    runs-on: warp-ubuntu-2404-x64-4x # ubuntu-24.04
 
     steps:
       - name: Project Checkout
@@ -150,10 +151,11 @@ jobs:
 
   compatibility-tests:
     needs: rust-build
-    runs-on: ${{ matrix.os }}
-    strategy:
-      matrix:
-        os: [ ubuntu-22.04, macos-13 ]
+    runs-on: warp-ubuntu-2404-x64-2x
+#    runs-on: ${{ matrix.os }}
+#    strategy:
+#      matrix:
+        # os: [ ubuntu-22.04, macos-13 ]
 
     steps:
       - name: Project Checkout
@@ -178,7 +180,7 @@ jobs:
 
 
   all-checks:
-    runs-on: ubuntu-24.04
+    runs-on: warp-ubuntu-2404-x64-2x
     needs: [docs-lint, docker-build, rust-artifacts, rust-security, compatibility-tests]
     steps:
       - name: Report success
