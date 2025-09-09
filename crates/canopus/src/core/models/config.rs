@@ -12,9 +12,12 @@ pub struct CanopusConfig {
     #[serde(rename(deserialize = "offline-checks-only"))]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub offline_checks_only: Option<bool>,
-    #[serde(rename(deserialize = "github-owners-only"))]
+    #[serde(rename(deserialize = "forbid-email-owners"))]
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub github_owners_only: Option<bool>,
+    pub forbid_email_owners: Option<bool>,
+    #[serde(rename(deserialize = "enforce-github-teams-owners"))]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub enforce_github_teams_owners: Option<bool>,
 }
 
 impl TryFrom<&Path> for CanopusConfig {

@@ -35,7 +35,7 @@ impl CodeOwnersValidator {
         let validations = vec![
             self.check_non_matching_glob_patterns(&codeowners, &self.path_walker.walk(project_root)),
             self.check_duplicated_owners(&codeowners),
-            self.check_github_only_owners(&codeowners, canopus_config),
+            self.check_allowed_owners(&codeowners, canopus_config),
             self.check_github_consistency(gh_org, &codeowners, canopus_config).await,
         ];
 
@@ -137,11 +137,19 @@ impl CodeOwnersValidator {
         Ok(())
     }
 
-    fn check_github_only_owners(&self, code_owners: &CodeOwners, canopus_config: &CanopusConfig) -> anyhow::Result<()> {
-        if !canopus_config.github_owners_only.unwrap_or(false) {
-            return Ok(());
+    fn check_allowed_owners(&self, code_owners: &CodeOwners, canopus_config: &CanopusConfig) -> anyhow::Result<()> {
+        if canopus_config.enforce_github_teams_owners.unwrap_or(false) {
+            return self.check_only_github_teams_owners(code_owners);
         };
 
+        if canopus_config.forbid_email_owners.unwrap_or(false) {
+            return self.check_non_email_owners(code_owners);
+        };
+
+        Ok(())
+    }
+
+    fn check_non_email_owners(&self, code_owners: &CodeOwners) -> anyhow::Result<()> {
         let email_owners = code_owners
             .unique_owners()
             .into_iter()
@@ -164,7 +172,34 @@ impl CodeOwnersValidator {
             })
             .collect_vec();
 
-        log::info!("Found owners defined by email, although not allowed");
+        log::info!("Found owners defined by email");
+        bail!(CodeownersValidationError::with(diagnostics))
+    }
+
+    fn check_only_github_teams_owners(&self, code_owners: &CodeOwners) -> anyhow::Result<()> {
+        let non_github_team_owners = code_owners
+            .unique_owners()
+            .into_iter()
+            .filter(|owner| !matches!(owner, Owner::GithubTeam(_)))
+            .collect_vec();
+
+        if non_github_team_owners.is_empty() {
+            log::info!("All owners are Github teams");
+            return Ok(());
+        };
+
+        let diagnostics = non_github_team_owners
+            .into_iter()
+            .map(|owner| {
+                ValidationDiagnostic::builder()
+                    .kind(DiagnosticKind::Configuration(ConfigurationIssue::OnlyGithubTeamOwner))
+                    .line_number(code_owners.occurrences(owner)[0])
+                    .message("only github team owner is allowed".to_string())
+                    .build()
+            })
+            .collect_vec();
+
+        log::info!("Found owners defined by email or github users");
         bail!(CodeownersValidationError::with(diagnostics))
     }
 
@@ -701,7 +736,7 @@ mod configuration_aware_tests {
     }
 
     #[tokio::test]
-    async fn should_honor_github_owners_only() {
+    async fn should_deny_email_owners() {
         let contents = indoc! {"
             *.rs    me@hakagi.dev
         "};
@@ -715,8 +750,9 @@ mod configuration_aware_tests {
 
         let config = CanopusConfig {
             github_organization: "dotanuki-labs".to_string(),
-            github_owners_only: Some(true),
+            forbid_email_owners: Some(true),
             offline_checks_only: Some(true),
+            ..Default::default()
         };
 
         let validation = validator.validate_codeowners(&context, &config).await;
@@ -728,6 +764,38 @@ mod configuration_aware_tests {
             .build();
 
         let expected = CodeownersValidationError::from(email_owner_not_allowed);
+        assertor::assert_that!(validation.into()).is_equal_to(expected);
+    }
+
+    #[tokio::test]
+    async fn should_enforce_github_teams_owners() {
+        let contents = indoc! {"
+            *.rs    @ubiratansoares
+        "};
+
+        let project_paths = vec!["main.rs"];
+
+        let context = test_builders::codeowners_attributes(contents);
+
+        // Forces panic if any Github consistency checks are used
+        let validator = test_builders::panics_for_online_checks_validator(project_paths);
+
+        let config = CanopusConfig {
+            github_organization: "dotanuki-labs".to_string(),
+            offline_checks_only: Some(true),
+            enforce_github_teams_owners: Some(true),
+            ..Default::default()
+        };
+
+        let validation = validator.validate_codeowners(&context, &config).await;
+
+        let only_team_owner_allowed = ValidationDiagnostic::builder()
+            .kind(DiagnosticKindFactory::github_team_owners_only())
+            .line_number(0)
+            .description("only github team owner is allowed")
+            .build();
+
+        let expected = CodeownersValidationError::from(only_team_owner_allowed);
         assertor::assert_that!(validation.into()).is_equal_to(expected);
     }
 }
