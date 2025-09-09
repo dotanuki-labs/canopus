@@ -25,9 +25,15 @@ pub enum ConsistencyIssue {
 }
 
 #[derive(Clone, Debug, PartialEq)]
+pub enum ConfigurationIssue {
+    EmailOwnerNotAllowed,
+}
+
+#[derive(Clone, Debug, PartialEq)]
 pub enum DiagnosticKind {
     Structural(StructuralIssue),
     Consistency(ConsistencyIssue),
+    Configuration(ConfigurationIssue),
 }
 
 impl Display for DiagnosticKind {
@@ -35,6 +41,7 @@ impl Display for DiagnosticKind {
         match self {
             DiagnosticKind::Structural(_) => write!(f, "structure"),
             DiagnosticKind::Consistency(_) => write!(f, "consistency"),
+            DiagnosticKind::Configuration(_) => write!(f, "configuration"),
         }
     }
 }
@@ -157,7 +164,7 @@ impl From<anyhow::Result<()>> for CodeownersValidationError {
 
 #[cfg(test)]
 pub mod test_helpers {
-    use crate::core::errors::{ConsistencyIssue, DiagnosticKind, StructuralIssue};
+    use crate::core::errors::{ConfigurationIssue, ConsistencyIssue, DiagnosticKind, StructuralIssue};
     use crate::core::models::handles::{GithubIdentityHandle, GithubTeamHandle};
 
     pub struct DiagnosticKindFactory;
@@ -183,6 +190,10 @@ pub mod test_helpers {
         pub fn user_does_not_belong_to_organization(name: &str) -> DiagnosticKind {
             let handle = GithubIdentityHandle::new(name.to_string());
             DiagnosticKind::Consistency(ConsistencyIssue::UserDoesNotBelongToOrganization(handle))
+        }
+
+        pub fn github_owners_only() -> DiagnosticKind {
+            DiagnosticKind::Configuration(ConfigurationIssue::EmailOwnerNotAllowed)
         }
     }
 }

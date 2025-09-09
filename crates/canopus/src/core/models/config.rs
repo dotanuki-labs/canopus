@@ -5,13 +5,16 @@ use anyhow::bail;
 use serde::Deserialize;
 use std::path::Path;
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, Default)]
 pub struct CanopusConfig {
     #[serde(rename(deserialize = "github-organization"))]
     pub github_organization: String,
     #[serde(rename(deserialize = "offline-checks-only"))]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub offline_checks_only: Option<bool>,
+    #[serde(rename(deserialize = "github-owners-only"))]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub github_owners_only: Option<bool>,
 }
 
 impl TryFrom<&Path> for CanopusConfig {
