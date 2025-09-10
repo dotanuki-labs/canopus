@@ -15,17 +15,17 @@ struct ValidateArguments {
     pub path: PathBuf,
 }
 
-#[derive(Args, Debug)]
+#[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
 struct RepairArguments {
     #[arg(short, long, help = "Path pointing to project root")]
     pub path: PathBuf,
 
     #[arg(short, long, action, help = "Whether to preview repair results")]
-    pub dry_run: Option<bool>,
+    pub dry_run: bool,
 
     #[arg(short, long, action, help = "Whether to remove problematic lines when repairing")]
-    pub remove_lines: Option<bool>,
+    pub remove_lines: bool,
 }
 
 #[derive(Parser)]
@@ -52,8 +52,8 @@ pub fn parse_arguments() -> anyhow::Result<CanopusCommand> {
         Validate(args) => ValidateCodeowners(args.path),
         Repair(args) => RepairCodeowners {
             project_root: args.path,
-            dry_run: args.dry_run.unwrap_or(false),
-            remove_lines: args.remove_lines.unwrap_or(false),
+            dry_run: args.dry_run,
+            remove_lines: args.remove_lines,
         },
     };
 

@@ -67,7 +67,7 @@ impl Canopus {
                 let outcome = self.codeowners_validator.validate(&context, &config).await?;
 
                 match outcome {
-                    ValidationOutcome::NoIssues => println!("No issues found"),
+                    ValidationOutcome::NoIssues => println!("Nothing to repair"),
                     ValidationOutcome::IssuesDetected(issues) => {
                         let unique_issues_per_line = issues.into_iter().unique_by(|issue| issue.line).collect_vec();
 
