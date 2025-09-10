@@ -188,8 +188,8 @@ impl TryFrom<(usize, &str)> for CodeOwnersEntry {
 
 #[derive(Debug)]
 pub struct CodeOwnersContext {
-    pub project_root: PathBuf,
-    pub location: PathBuf,
+    pub project_path: PathBuf,
+    pub codeowners_path: PathBuf,
     pub contents: String,
 }
 
@@ -232,14 +232,14 @@ impl TryFrom<PathBuf> for CodeOwnersContext {
 
         let codeowners_content = std::fs::read_to_string(codeowners_file.as_path())?;
         let attributes = Self {
-            project_root: value,
-            location: codeowners_file,
+            project_path: value,
+            codeowners_path: codeowners_file,
             contents: codeowners_content,
         };
 
         log::info!(
             "Codeowners config found at : {}",
-            &attributes.location.to_string_lossy()
+            &attributes.codeowners_path.to_string_lossy()
         );
 
         Ok(attributes)

@@ -2,16 +2,30 @@
 // SPDX-License-Identifier: MIT
 
 use crate::canopus::CanopusCommand;
-use crate::canopus::CanopusCommand::ValidateCodeowners;
+use crate::canopus::CanopusCommand::{RepairCodeowners, ValidateCodeowners};
 use crate::infra::cli::Commands::Validate;
-use clap::{Parser, Subcommand, arg};
+use Commands::Repair;
+use clap::{Args, Parser, Subcommand, arg};
 use std::path::PathBuf;
 
-#[derive(Parser, Debug)]
+#[derive(Args, Debug)]
 #[command(version, about, long_about = None)]
 struct ValidateArguments {
     #[arg(short, long, help = "Path pointing to project root")]
     pub path: PathBuf,
+}
+
+#[derive(Args, Debug)]
+#[command(version, about, long_about = None)]
+struct RepairArguments {
+    #[arg(short, long, help = "Path pointing to project root")]
+    pub path: PathBuf,
+
+    #[arg(short, long, action, help = "Whether to preview repair results")]
+    pub dry_run: Option<bool>,
+
+    #[arg(short, long, action, help = "Whether to remove problematic lines when repairing")]
+    pub remove_lines: Option<bool>,
 }
 
 #[derive(Parser)]
@@ -24,7 +38,10 @@ struct CliParser {
 
 #[derive(Subcommand)]
 enum Commands {
-    /// Explains lint or formatting criteria
+    /// Repairs a CodeOwners file within a project
+    Repair(RepairArguments),
+
+    /// Validates a CodeOwners file within a project
     Validate(ValidateArguments),
 }
 
@@ -33,6 +50,11 @@ pub fn parse_arguments() -> anyhow::Result<CanopusCommand> {
 
     let execution = match cli.command {
         Validate(args) => ValidateCodeowners(args.path),
+        Repair(args) => RepairCodeowners {
+            project_root: args.path,
+            dry_run: args.dry_run.unwrap_or(false),
+            remove_lines: args.remove_lines.unwrap_or(false),
+        },
     };
 
     Ok(execution)
