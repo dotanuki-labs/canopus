@@ -1,8 +1,8 @@
 // Copyright 2025 Dotanuki Labs
 // SPDX-License-Identifier: MIT
 
-use crate::core::errors::ConsistencyIssue;
-use crate::core::errors::ConsistencyIssue::CannotListMembersInTheOrganization;
+use crate::core::models::ConsistencyIssue;
+use crate::core::models::ConsistencyIssue::CannotListMembersInTheOrganization;
 use crate::core::models::handles::{GithubIdentityHandle, GithubTeamHandle};
 use http::StatusCode;
 use itertools::Itertools;
@@ -272,7 +272,7 @@ impl FakeGithubState {
 
 #[cfg(test)]
 mod tests {
-    use crate::core::errors::ConsistencyIssue;
+    use crate::core::models::ConsistencyIssue;
     use crate::core::models::handles::{GithubIdentityHandle, GithubTeamHandle};
     use crate::infra::github::{CheckGithubConsistency, GithubConsistencyChecker};
     use assertor::{EqualityAssertion, ResultAssertion};

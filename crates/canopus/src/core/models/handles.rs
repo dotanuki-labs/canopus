@@ -1,7 +1,7 @@
 // Copyright 2025 Dotanuki Labs
 // SPDX-License-Identifier: MIT
 
-use crate::core::errors::{DiagnosticKind, StructuralIssue, ValidationDiagnostic};
+use crate::core::models::{IssueKind, StructuralIssue, ValidationIssue};
 use itertools::Itertools;
 use lazy_regex::{Lazy, Regex};
 
@@ -15,15 +15,15 @@ static GITHUB_TEAM_REGEX: &Lazy<Regex, fn() -> Regex> = lazy_regex::regex!(r#"^[
 pub struct EmailHandle(String);
 
 impl TryFrom<ParsedLine> for EmailHandle {
-    type Error = ValidationDiagnostic;
+    type Error = ValidationIssue;
 
     fn try_from((line, email): ParsedLine) -> Result<Self, Self::Error> {
         if email_address::EmailAddress::is_valid(&email) {
             return Ok(Self(email));
         };
 
-        let diagnostic = ValidationDiagnostic::builder()
-            .kind(DiagnosticKind::Structural(StructuralIssue::InvalidSyntax))
+        let diagnostic = ValidationIssue::builder()
+            .kind(IssueKind::Structural(StructuralIssue::InvalidSyntax))
             .line_number(line)
             .description("cannot parse owner from email address")
             .build();
@@ -46,15 +46,15 @@ impl GithubIdentityHandle {
 }
 
 impl TryFrom<ParsedLine> for GithubIdentityHandle {
-    type Error = ValidationDiagnostic;
+    type Error = ValidationIssue;
 
     fn try_from((line, github_handle): ParsedLine) -> Result<Self, Self::Error> {
         if GITHUB_HANDLE_REGEX.is_match(&github_handle) {
             return Ok(Self(github_handle));
         };
 
-        let diagnostic = ValidationDiagnostic::builder()
-            .kind(DiagnosticKind::Structural(StructuralIssue::InvalidSyntax))
+        let diagnostic = ValidationIssue::builder()
+            .kind(IssueKind::Structural(StructuralIssue::InvalidSyntax))
             .line_number(line)
             .description("invalid github handle")
             .build();
@@ -76,14 +76,14 @@ impl GithubTeamHandle {
 }
 
 impl TryFrom<ParsedLine> for GithubTeamHandle {
-    type Error = ValidationDiagnostic;
+    type Error = ValidationIssue;
 
     fn try_from((line, team_handle): ParsedLine) -> Result<Self, Self::Error> {
         let parts = team_handle.split('/').collect_vec();
 
         if parts.len() > 2 {
-            let diagnostic = ValidationDiagnostic::builder()
-                .kind(DiagnosticKind::Structural(StructuralIssue::InvalidSyntax))
+            let diagnostic = ValidationIssue::builder()
+                .kind(IssueKind::Structural(StructuralIssue::InvalidSyntax))
                 .line_number(line)
                 .description("cannot parse github team handle")
                 .build();
@@ -100,8 +100,8 @@ impl TryFrom<ParsedLine> for GithubTeamHandle {
             return Ok(team);
         };
 
-        let diagnostic = ValidationDiagnostic::builder()
-            .kind(DiagnosticKind::Structural(StructuralIssue::InvalidSyntax))
+        let diagnostic = ValidationIssue::builder()
+            .kind(IssueKind::Structural(StructuralIssue::InvalidSyntax))
             .line_number(line)
             .description("invalid github team handle")
             .build();
@@ -118,7 +118,7 @@ pub enum Owner {
 }
 
 impl TryFrom<ParsedLine> for Owner {
-    type Error = ValidationDiagnostic;
+    type Error = ValidationIssue;
 
     fn try_from((line, value): ParsedLine) -> Result<Self, Self::Error> {
         match value {
@@ -140,8 +140,8 @@ impl TryFrom<ParsedLine> for Owner {
                 Ok(owner)
             },
             _ => {
-                let diagnostic = ValidationDiagnostic::builder()
-                    .kind(DiagnosticKind::Structural(StructuralIssue::InvalidSyntax))
+                let diagnostic = ValidationIssue::builder()
+                    .kind(IssueKind::Structural(StructuralIssue::InvalidSyntax))
                     .line_number(line)
                     .description("cannot parse owner")
                     .build();
