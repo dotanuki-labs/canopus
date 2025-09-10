@@ -1,8 +1,8 @@
 // Copyright 2025 Dotanuki Labs
 // SPDX-License-Identifier: MIT
 
-use crate::core::errors::{CodeownersValidationError, DiagnosticKind, StructuralIssue, ValidationDiagnostic};
 use crate::core::models::handles::Owner;
+use crate::core::models::{CodeownersParsingOutcome, IssueKind, StructuralIssue, ValidationIssue, ValidationOutcome};
 use anyhow::bail;
 use globset::Glob;
 use itertools::Itertools;
@@ -25,14 +25,14 @@ pub enum CodeOwnersEntry {
 }
 
 impl CodeOwnersEntry {
-    fn try_new_comment(line_number: usize, comment: &str) -> Result<Self, ValidationDiagnostic> {
+    fn try_new_comment(line_number: usize, comment: &str) -> Result<Self, ValidationIssue> {
         Self::check_non_empty_comment(line_number, comment)?;
 
         let sanitized = comment.replace("#", "").trim().to_string();
         Ok(CodeOwnersEntry::Comment(sanitized))
     }
 
-    fn try_new_rule(line_number: usize, glob: Glob, owners: Vec<Owner>) -> Result<Self, ValidationDiagnostic> {
+    fn try_new_rule(line_number: usize, glob: Glob, owners: Vec<Owner>) -> Result<Self, ValidationIssue> {
         Self::check_non_empty_owners_list(line_number, &owners)?;
 
         let ownership = OwnershipRule {
@@ -50,7 +50,7 @@ impl CodeOwnersEntry {
         glob: Glob,
         owners: Vec<Owner>,
         comment: &str,
-    ) -> Result<Self, ValidationDiagnostic> {
+    ) -> Result<Self, ValidationIssue> {
         Self::check_non_empty_comment(line_number, comment)?;
         Self::check_non_empty_owners_list(line_number, &owners)?;
 
@@ -64,10 +64,10 @@ impl CodeOwnersEntry {
         Ok(CodeOwnersEntry::Rule(ownership))
     }
 
-    fn check_non_empty_comment(line_number: usize, comment: &str) -> Result<(), ValidationDiagnostic> {
+    fn check_non_empty_comment(line_number: usize, comment: &str) -> Result<(), ValidationIssue> {
         if comment.is_empty() {
-            let empty_comment = ValidationDiagnostic::builder()
-                .kind(DiagnosticKind::Structural(StructuralIssue::InvalidSyntax))
+            let empty_comment = ValidationIssue::builder()
+                .kind(IssueKind::Structural(StructuralIssue::InvalidSyntax))
                 .line_number(line_number)
                 .description("expected non-empty comment")
                 .build();
@@ -78,10 +78,10 @@ impl CodeOwnersEntry {
         Ok(())
     }
 
-    fn check_non_empty_owners_list(line_number: usize, owners: &[Owner]) -> Result<(), ValidationDiagnostic> {
+    fn check_non_empty_owners_list(line_number: usize, owners: &[Owner]) -> Result<(), ValidationIssue> {
         if owners.is_empty() {
-            let empty_owners_list = ValidationDiagnostic::builder()
-                .kind(DiagnosticKind::Structural(StructuralIssue::InvalidSyntax))
+            let empty_owners_list = ValidationIssue::builder()
+                .kind(IssueKind::Structural(StructuralIssue::InvalidSyntax))
                 .line_number(line_number)
                 .description("expected non-empty owners list")
                 .build();
@@ -109,9 +109,9 @@ impl CodeOwnersEntry {
 }
 
 impl TryFrom<(usize, &str)> for CodeOwnersEntry {
-    type Error = CodeownersValidationError;
+    type Error = CodeownersParsingOutcome;
 
-    fn try_from((line_number, line_contents): (usize, &str)) -> Result<Self, CodeownersValidationError> {
+    fn try_from((line_number, line_contents): (usize, &str)) -> Result<Self, CodeownersParsingOutcome> {
         if line_contents.is_empty() {
             Ok(CodeOwnersEntry::BlankLine)
         } else if line_contents.starts_with("#") {
@@ -123,18 +123,18 @@ impl TryFrom<(usize, &str)> for CodeOwnersEntry {
                 panic!("L{line_number} : expecting non-empty line")
             };
 
-            let mut diagnostics: Vec<ValidationDiagnostic> = vec![];
+            let mut issues: Vec<ValidationIssue> = vec![];
 
             let glob_pattern = match Glob::new(raw_pattern) {
                 Ok(glob) => Some(glob),
                 Err(_) => {
-                    let invalid_glob = ValidationDiagnostic::builder()
-                        .kind(DiagnosticKind::Structural(StructuralIssue::InvalidSyntax))
+                    let invalid_glob = ValidationIssue::builder()
+                        .kind(IssueKind::Structural(StructuralIssue::InvalidSyntax))
                         .line_number(line_number)
                         .description("invalid glob pattern")
                         .build();
 
-                    diagnostics.push(invalid_glob);
+                    issues.push(invalid_glob);
                     None
                 },
             };
@@ -157,20 +157,20 @@ impl TryFrom<(usize, &str)> for CodeOwnersEntry {
                             owners.push(owner);
                         },
                         Err(_) => {
-                            let invalid_owner = ValidationDiagnostic::builder()
-                                .kind(DiagnosticKind::Structural(StructuralIssue::InvalidSyntax))
+                            let invalid_owner = ValidationIssue::builder()
+                                .kind(IssueKind::Structural(StructuralIssue::InvalidSyntax))
                                 .line_number(line_number)
                                 .description("cannot parse owner")
                                 .build();
 
-                            diagnostics.push(invalid_owner)
+                            issues.push(invalid_owner)
                         },
                     }
                 }
             }
 
-            if !diagnostics.is_empty() || glob_pattern.is_none() {
-                return Err(CodeownersValidationError { diagnostics });
+            if !issues.is_empty() || glob_pattern.is_none() {
+                return Err(CodeownersParsingOutcome(issues));
             }
 
             let glob = glob_pattern.unwrap();
@@ -261,12 +261,21 @@ impl OwnershipRecord {
 #[derive(Debug, PartialEq)]
 pub struct CodeOwners {
     pub entries: Vec<CodeOwnersEntry>,
+    pub syntax_validation: ValidationOutcome,
     ownerships: HashMap<Owner, Vec<OwnershipRecord>>,
 }
 
 impl CodeOwners {
-    pub fn new(entries: Vec<CodeOwnersEntry>, ownerships: HashMap<Owner, Vec<OwnershipRecord>>) -> Self {
-        Self { entries, ownerships }
+    pub fn new(
+        entries: Vec<CodeOwnersEntry>,
+        syntax_validation: ValidationOutcome,
+        ownerships: HashMap<Owner, Vec<OwnershipRecord>>,
+    ) -> Self {
+        Self {
+            entries,
+            syntax_validation,
+            ownerships,
+        }
     }
 
     pub fn unique_owners(&self) -> Vec<&Owner> {
@@ -289,7 +298,7 @@ impl TryFrom<&str> for CodeOwners {
 
         let mut entries: Vec<CodeOwnersEntry> = vec![];
         let mut ownerships: HashMap<Owner, Vec<OwnershipRecord>> = HashMap::new();
-        let mut diagnostics: Vec<ValidationDiagnostic> = vec![];
+        let mut issues: Vec<ValidationIssue> = vec![];
 
         for (line_number, line_contents) in lines.enumerate() {
             match CodeOwnersEntry::try_from((line_number, line_contents)) {
@@ -308,15 +317,17 @@ impl TryFrom<&str> for CodeOwners {
                         }
                     }
                 },
-                Err(mut error) => diagnostics.append(&mut error.diagnostics),
+                Err(mut error) => issues.append(&mut error.0),
             }
         }
 
-        if !diagnostics.is_empty() {
-            bail!(CodeownersValidationError::with(diagnostics));
-        }
+        let syntax_validation = if issues.is_empty() {
+            ValidationOutcome::NoIssues
+        } else {
+            ValidationOutcome::IssuesDetected(issues)
+        };
 
-        Ok(CodeOwners::new(entries, ownerships))
+        Ok(CodeOwners::new(entries, syntax_validation, ownerships))
     }
 }
 

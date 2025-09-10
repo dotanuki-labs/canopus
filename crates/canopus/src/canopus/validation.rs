@@ -1,16 +1,14 @@
 // Copyright 2025 Dotanuki Labs
 // SPDX-License-Identifier: MIT
 
-use crate::core::errors::{
-    CodeownersValidationError, ConfigurationIssue, ConsistencyIssue, DiagnosticKind, StructuralIssue,
-    ValidationDiagnostic,
-};
 use crate::core::models::codeowners::{CodeOwners, CodeOwnersContext, CodeOwnersEntry};
 use crate::core::models::config::CanopusConfig;
 use crate::core::models::handles::Owner;
+use crate::core::models::{
+    ConfigurationIssue, ConsistencyIssue, IssueKind, StructuralIssue, ValidationIssue, ValidationOutcome,
+};
 use crate::infra::github::{CheckGithubConsistency, GithubConsistencyChecker};
 use crate::infra::paths::{DirWalking, PathWalker};
-use anyhow::bail;
 use itertools::Itertools;
 use std::collections::HashSet;
 use std::path::PathBuf;
@@ -21,46 +19,60 @@ pub struct CodeOwnersValidator {
 }
 
 impl CodeOwnersValidator {
+    pub fn new(github_consistency_checker: GithubConsistencyChecker, path_walker: PathWalker) -> Self {
+        Self {
+            github_consistency_checker,
+            path_walker,
+        }
+    }
+
     pub async fn validate_codeowners(
         &self,
-        codeowners_file: &CodeOwnersContext,
+        codeowners_context: &CodeOwnersContext,
         canopus_config: &CanopusConfig,
-    ) -> anyhow::Result<()> {
-        let project_root = codeowners_file.project_root.as_path();
-        let codeowners = CodeOwners::try_from(codeowners_file.contents.as_str())?;
+    ) -> anyhow::Result<ValidationOutcome> {
+        let project_root = codeowners_context.project_root.as_path();
+        let codeowners = CodeOwners::try_from(codeowners_context.contents.as_str())?;
         log::info!("Syntax errors : not found");
 
         let gh_org = canopus_config.general.github_organization.as_str();
 
         let validations = vec![
-            self.check_non_matching_glob_patterns(&codeowners, &self.path_walker.walk(project_root)),
-            self.check_multiple_owners_per_glob(&codeowners),
-            self.check_multiple_ownership_per_entry(&codeowners, canopus_config),
-            self.check_allowed_owners(&codeowners, canopus_config),
-            self.check_github_consistency(gh_org, &codeowners, canopus_config).await,
+            codeowners.syntax_validation.clone(),
+            self.check_non_matching_glob_patterns(&codeowners, &self.path_walker.walk(project_root))?,
+            self.check_duplicated_owners(&codeowners)?,
+            self.check_multiple_ownership_per_entry(&codeowners, canopus_config)?,
+            self.check_allowed_owners(&codeowners, canopus_config)?,
+            self.check_github_consistency(gh_org, &codeowners, canopus_config)
+                .await?,
         ];
 
-        if validations.iter().all(|check| check.is_ok()) {
-            return Ok(());
+        if validations
+            .iter()
+            .all(|outcome| matches!(outcome, ValidationOutcome::NoIssues))
+        {
+            return Ok(ValidationOutcome::NoIssues);
         }
 
-        let diagnostics = validations
+        let all_issues = validations
             .into_iter()
-            .filter_map(|check| check.err())
-            .flat_map(|error| error.downcast::<CodeownersValidationError>())
-            .flat_map(|raised| raised.diagnostics)
+            .filter_map(|outcome| match outcome {
+                ValidationOutcome::NoIssues => None,
+                ValidationOutcome::IssuesDetected(issues) => Some(issues),
+            })
+            .flatten()
             .collect_vec();
 
-        bail!(CodeownersValidationError::with(diagnostics));
+        Ok(ValidationOutcome::IssuesDetected(all_issues))
     }
 
     fn check_multiple_ownership_per_entry(
         &self,
         code_owners: &CodeOwners,
         canopus_config: &CanopusConfig,
-    ) -> anyhow::Result<()> {
+    ) -> anyhow::Result<ValidationOutcome> {
         if !canopus_config.ownership.enforce_one_owner_per_line.unwrap_or(false) {
-            return Ok(());
+            return Ok(ValidationOutcome::NoIssues);
         };
 
         let entries_with_multiple_owners = code_owners
@@ -80,14 +92,14 @@ impl CodeOwnersValidator {
 
         if entries_with_multiple_owners.is_empty() {
             log::info!("All ownership entries have a single owner defined");
-            return Ok(());
+            return Ok(ValidationOutcome::NoIssues);
         };
 
-        let diagnostics = entries_with_multiple_owners
+        let issues = entries_with_multiple_owners
             .iter()
             .map(|rule| {
-                ValidationDiagnostic::builder()
-                    .kind(DiagnosticKind::Configuration(ConfigurationIssue::OnlyOneOwnerPerEntry))
+                ValidationIssue::builder()
+                    .kind(IssueKind::Configuration(ConfigurationIssue::OnlyOneOwnerPerEntry))
                     .line_number(rule.line_number)
                     .description("Entry defines more than one owner for this glob")
                     .build()
@@ -95,10 +107,10 @@ impl CodeOwnersValidator {
             .collect_vec();
 
         log::info!("Found some CodeOwners entries with multiple owners for the same glob");
-        bail!(CodeownersValidationError::with(diagnostics))
+        Ok(ValidationOutcome::IssuesDetected(issues))
     }
 
-    fn check_multiple_owners_per_glob(&self, code_owners: &CodeOwners) -> anyhow::Result<()> {
+    fn check_duplicated_owners(&self, code_owners: &CodeOwners) -> anyhow::Result<ValidationOutcome> {
         let ownerships = &code_owners
             .entries
             .iter()
@@ -120,11 +132,11 @@ impl CodeOwnersValidator {
         }
 
         if !grouped_per_glob.is_empty() {
-            let diagnostics = grouped_per_glob
+            let issues = grouped_per_glob
                 .iter()
                 .map(|(glob, lines)| {
-                    ValidationDiagnostic::builder()
-                        .kind(DiagnosticKind::Structural(StructuralIssue::DuplicateOwnership))
+                    ValidationIssue::builder()
+                        .kind(IssueKind::Structural(StructuralIssue::DuplicateOwnership))
                         .line_number(lines[0])
                         .message(format!("{} defined multiple times : lines {:?}", glob, lines))
                         .build()
@@ -132,15 +144,18 @@ impl CodeOwnersValidator {
                 .collect_vec();
 
             log::info!("Found some duplicated ownership rules");
-
-            bail!(CodeownersValidationError::with(diagnostics))
+            return Ok(ValidationOutcome::IssuesDetected(issues));
         }
 
         log::info!("Duplicated code owners : not found");
-        Ok(())
+        Ok(ValidationOutcome::NoIssues)
     }
 
-    fn check_non_matching_glob_patterns(&self, code_owners: &CodeOwners, paths: &[PathBuf]) -> anyhow::Result<()> {
+    fn check_non_matching_glob_patterns(
+        &self,
+        code_owners: &CodeOwners,
+        paths: &[PathBuf],
+    ) -> anyhow::Result<ValidationOutcome> {
         let lines_and_glob_matchers = code_owners
             .entries
             .iter()
@@ -161,28 +176,32 @@ impl CodeOwnersValidator {
             })
             .collect::<HashSet<_>>();
 
-        let diagnostics = lines_and_glob_matchers
+        let issues = lines_and_glob_matchers
             .iter()
             .filter(|(_, glob_matcher)| !matching_globs.contains(glob_matcher.glob()))
             .map(|(line, glob_matcher)| {
-                ValidationDiagnostic::builder()
-                    .kind(DiagnosticKind::Structural(StructuralIssue::DanglingGlobPattern))
+                ValidationIssue::builder()
+                    .kind(IssueKind::Structural(StructuralIssue::DanglingGlobPattern))
                     .line_number(*line)
                     .message(format!("{} does not match any project path", glob_matcher.glob()))
                     .build()
             })
             .collect_vec();
 
-        if !diagnostics.is_empty() {
+        if !issues.is_empty() {
             log::info!("Found patterns that won't match any existing project files");
-            bail!(CodeownersValidationError::with(diagnostics))
+            return Ok(ValidationOutcome::IssuesDetected(issues));
         }
 
         log::info!("Dangling glob patterns : not found");
-        Ok(())
+        Ok(ValidationOutcome::NoIssues)
     }
 
-    fn check_allowed_owners(&self, code_owners: &CodeOwners, canopus_config: &CanopusConfig) -> anyhow::Result<()> {
+    fn check_allowed_owners(
+        &self,
+        code_owners: &CodeOwners,
+        canopus_config: &CanopusConfig,
+    ) -> anyhow::Result<ValidationOutcome> {
         if canopus_config.ownership.enforce_github_teams_owners.unwrap_or(false) {
             return self.check_only_github_teams_owners(code_owners);
         };
@@ -191,10 +210,10 @@ impl CodeOwnersValidator {
             return self.check_non_email_owners(code_owners);
         };
 
-        Ok(())
+        Ok(ValidationOutcome::NoIssues)
     }
 
-    fn check_non_email_owners(&self, code_owners: &CodeOwners) -> anyhow::Result<()> {
+    fn check_non_email_owners(&self, code_owners: &CodeOwners) -> anyhow::Result<ValidationOutcome> {
         let email_owners = code_owners
             .unique_owners()
             .into_iter()
@@ -203,14 +222,14 @@ impl CodeOwnersValidator {
 
         if email_owners.is_empty() {
             log::info!("Email owners : not found");
-            return Ok(());
+            return Ok(ValidationOutcome::NoIssues);
         };
 
-        let diagnostics = email_owners
+        let issues = email_owners
             .into_iter()
             .map(|owner| {
-                ValidationDiagnostic::builder()
-                    .kind(DiagnosticKind::Configuration(ConfigurationIssue::EmailOwnerNotAllowed))
+                ValidationIssue::builder()
+                    .kind(IssueKind::Configuration(ConfigurationIssue::EmailOwnerNotAllowed))
                     .line_number(code_owners.occurrences(owner)[0])
                     .message("email owner is not allowed".to_string())
                     .build()
@@ -218,10 +237,10 @@ impl CodeOwnersValidator {
             .collect_vec();
 
         log::info!("Found owners defined by email");
-        bail!(CodeownersValidationError::with(diagnostics))
+        Ok(ValidationOutcome::IssuesDetected(issues))
     }
 
-    fn check_only_github_teams_owners(&self, code_owners: &CodeOwners) -> anyhow::Result<()> {
+    fn check_only_github_teams_owners(&self, code_owners: &CodeOwners) -> anyhow::Result<ValidationOutcome> {
         let non_github_team_owners = code_owners
             .unique_owners()
             .into_iter()
@@ -230,14 +249,14 @@ impl CodeOwnersValidator {
 
         if non_github_team_owners.is_empty() {
             log::info!("All owners are Github teams");
-            return Ok(());
+            return Ok(ValidationOutcome::NoIssues);
         };
 
-        let diagnostics = non_github_team_owners
+        let issues = non_github_team_owners
             .into_iter()
             .map(|owner| {
-                ValidationDiagnostic::builder()
-                    .kind(DiagnosticKind::Configuration(ConfigurationIssue::OnlyGithubTeamOwner))
+                ValidationIssue::builder()
+                    .kind(IssueKind::Configuration(ConfigurationIssue::OnlyGithubTeamOwner))
                     .line_number(code_owners.occurrences(owner)[0])
                     .message("only github team owner is allowed".to_string())
                     .build()
@@ -245,7 +264,7 @@ impl CodeOwnersValidator {
             .collect_vec();
 
         log::info!("Found owners defined by email or github users");
-        bail!(CodeownersValidationError::with(diagnostics))
+        Ok(ValidationOutcome::IssuesDetected(issues))
     }
 
     async fn check_github_consistency(
@@ -253,11 +272,11 @@ impl CodeOwnersValidator {
         organization: &str,
         code_owners: &CodeOwners,
         canopus_config: &CanopusConfig,
-    ) -> anyhow::Result<()> {
+    ) -> anyhow::Result<ValidationOutcome> {
         let offline_checks_only = canopus_config.general.offline_checks_only.unwrap_or(false);
 
         if offline_checks_only {
-            return Ok(());
+            return Ok(ValidationOutcome::NoIssues);
         }
 
         let unique_ownerships = code_owners.unique_owners();
@@ -280,10 +299,10 @@ impl CodeOwnersValidator {
         let consistency_results = futures::future::join_all(consistency_checks).await;
 
         if consistency_results.iter().all(|check| check.is_ok()) {
-            return Ok(());
+            return Ok(ValidationOutcome::NoIssues);
         };
 
-        let diagnostics = consistency_results
+        let issues = consistency_results
             .into_iter()
             .filter_map(|check| check.err())
             .map(|issue| match issue.clone() {
@@ -369,22 +388,15 @@ impl CodeOwnersValidator {
                 },
             })
             .map(|(issue, line, cause)| {
-                ValidationDiagnostic::builder()
-                    .kind(DiagnosticKind::Consistency(issue))
+                ValidationIssue::builder()
+                    .kind(IssueKind::Consistency(issue))
                     .line_number(line)
                     .message(cause)
                     .build()
             })
             .collect_vec();
 
-        bail!(CodeownersValidationError::with(diagnostics))
-    }
-
-    pub fn new(github_consistency_checker: GithubConsistencyChecker, path_walker: PathWalker) -> Self {
-        Self {
-            github_consistency_checker,
-            path_walker,
-        }
+        Ok(ValidationOutcome::IssuesDetected(issues))
     }
 }
 
@@ -441,8 +453,8 @@ mod test_builders {
 #[cfg(test)]
 mod structural_validation_tests {
     use crate::canopus::validation::test_builders;
-    use crate::core::errors::test_helpers::DiagnosticKindFactory;
-    use crate::core::errors::{CodeownersValidationError, ValidationDiagnostic};
+    use crate::core::models::test_helpers::ValidationIssueKindFactory;
+    use crate::core::models::{ValidationIssue, ValidationOutcome};
     use assertor::{EqualityAssertion, ResultAssertion};
     use indoc::indoc;
 
@@ -475,17 +487,17 @@ mod structural_validation_tests {
 
         let config = test_builders::simple_canopus_config("dotanuki-labs");
 
-        let validation = validator.validate_codeowners(&context, &config).await;
+        let validation = validator.validate_codeowners(&context, &config).await.unwrap();
 
-        let issue = ValidationDiagnostic::builder()
-            .kind(DiagnosticKindFactory::invalid_syntax())
+        let issue = ValidationIssue::builder()
+            .kind(ValidationIssueKindFactory::invalid_syntax())
             .line_number(0)
             .description("cannot parse owner")
             .build();
 
-        let expected = CodeownersValidationError::from(issue);
+        let expected = ValidationOutcome::IssuesDetected(vec![issue]);
 
-        assertor::assert_that!(validation.into()).is_equal_to(expected);
+        assertor::assert_that!(validation).is_equal_to(expected);
     }
 
     #[tokio::test]
@@ -499,17 +511,17 @@ mod structural_validation_tests {
 
         let config = test_builders::simple_canopus_config("dotanuki-labs");
 
-        let validation = validator.validate_codeowners(&context, &config).await;
+        let validation = validator.validate_codeowners(&context, &config).await.unwrap();
 
-        let issue = ValidationDiagnostic::builder()
-            .kind(DiagnosticKindFactory::invalid_syntax())
+        let issue = ValidationIssue::builder()
+            .kind(ValidationIssueKindFactory::invalid_syntax())
             .line_number(0)
             .description("invalid glob pattern")
             .build();
 
-        let expected = CodeownersValidationError::from(issue);
+        let expected = ValidationOutcome::IssuesDetected(vec![issue]);
 
-        assertor::assert_that!(validation.into()).is_equal_to(expected);
+        assertor::assert_that!(validation).is_equal_to(expected);
     }
 
     #[tokio::test]
@@ -523,23 +535,24 @@ mod structural_validation_tests {
 
         let config = test_builders::simple_canopus_config("dotanuki-labs");
 
-        let validation = validator.validate_codeowners(&context, &config).await;
+        let validation = validator.validate_codeowners(&context, &config).await.unwrap();
 
-        let invalid_glob = ValidationDiagnostic::builder()
-            .kind(DiagnosticKindFactory::invalid_syntax())
+        let invalid_glob = ValidationIssue::builder()
+            .kind(ValidationIssueKindFactory::invalid_syntax())
             .line_number(0)
             .description("invalid glob pattern")
             .build();
 
-        let invalid_owner = ValidationDiagnostic::builder()
-            .kind(DiagnosticKindFactory::invalid_syntax())
+        let invalid_owner = ValidationIssue::builder()
+            .kind(ValidationIssueKindFactory::invalid_syntax())
             .line_number(0)
             .description("cannot parse owner")
             .build();
 
-        let expected = CodeownersValidationError::with(vec![invalid_glob, invalid_owner]);
+        let issues = vec![invalid_glob, invalid_owner];
+        let expected = ValidationOutcome::IssuesDetected(issues);
 
-        assertor::assert_that!(validation.into()).is_equal_to(expected);
+        assertor::assert_that!(validation).is_equal_to(expected);
     }
 
     #[tokio::test]
@@ -556,17 +569,17 @@ mod structural_validation_tests {
 
         let config = test_builders::simple_canopus_config("dotanuki-labs");
 
-        let validation = validator.validate_codeowners(&context, &config).await;
+        let validation = validator.validate_codeowners(&context, &config).await.unwrap();
 
-        let issue = ValidationDiagnostic::builder()
-            .kind(DiagnosticKindFactory::dangling_glob_pattern())
+        let issue = ValidationIssue::builder()
+            .kind(ValidationIssueKindFactory::dangling_glob_pattern())
             .line_number(1)
             .description(".automation/** does not match any project path")
             .build();
 
-        let expected = CodeownersValidationError::from(issue);
+        let expected = ValidationOutcome::IssuesDetected(vec![issue]);
 
-        assertor::assert_that!(validation.into()).is_equal_to(expected);
+        assertor::assert_that!(validation).is_equal_to(expected);
     }
 
     #[tokio::test]
@@ -584,17 +597,17 @@ mod structural_validation_tests {
 
         let config = test_builders::simple_canopus_config("dotanuki-labs");
 
-        let validation = validator.validate_codeowners(&context, &config).await;
+        let validation = validator.validate_codeowners(&context, &config).await.unwrap();
 
-        let duplicated_ownership = ValidationDiagnostic::builder()
-            .kind(DiagnosticKindFactory::duplicate_ownership())
+        let duplicated_ownership = ValidationIssue::builder()
+            .kind(ValidationIssueKindFactory::duplicate_ownership())
             .line_number(0)
             .description("*.rs defined multiple times : lines [0, 2]")
             .build();
 
-        let expected = CodeownersValidationError::from(duplicated_ownership);
+        let expected = ValidationOutcome::IssuesDetected(vec![duplicated_ownership]);
 
-        assertor::assert_that!(validation.into()).is_equal_to(expected);
+        assertor::assert_that!(validation).is_equal_to(expected);
     }
 
     #[tokio::test]
@@ -612,30 +625,31 @@ mod structural_validation_tests {
 
         let config = test_builders::simple_canopus_config("dotanuki-labs");
 
-        let validation = validator.validate_codeowners(&context, &config).await;
+        let validation = validator.validate_codeowners(&context, &config).await.unwrap();
 
-        let dangling_glob = ValidationDiagnostic::builder()
-            .kind(DiagnosticKindFactory::dangling_glob_pattern())
+        let dangling_glob = ValidationIssue::builder()
+            .kind(ValidationIssueKindFactory::dangling_glob_pattern())
             .line_number(1)
             .description("docs/**/*.md does not match any project path")
             .build();
 
-        let duplicated_ownership = ValidationDiagnostic::builder()
-            .kind(DiagnosticKindFactory::duplicate_ownership())
+        let duplicated_ownership = ValidationIssue::builder()
+            .kind(ValidationIssueKindFactory::duplicate_ownership())
             .line_number(0)
             .description("*.rs defined multiple times : lines [0, 2]")
             .build();
 
-        let expected = CodeownersValidationError::with(vec![dangling_glob, duplicated_ownership]);
-        assertor::assert_that!(validation.into()).is_equal_to(expected);
+        let issues = vec![dangling_glob, duplicated_ownership];
+        let expected = ValidationOutcome::IssuesDetected(issues);
+        assertor::assert_that!(validation).is_equal_to(expected);
     }
 }
 
 #[cfg(test)]
 mod consistency_validation_tests {
     use crate::canopus::validation::test_builders;
-    use crate::core::errors::test_helpers::DiagnosticKindFactory;
-    use crate::core::errors::{CodeownersValidationError, ValidationDiagnostic};
+    use crate::core::models::test_helpers::ValidationIssueKindFactory;
+    use crate::core::models::{ValidationIssue, ValidationOutcome};
     use crate::infra::github;
     use assertor::{EqualityAssertion, ResultAssertion};
     use indoc::indoc;
@@ -682,16 +696,16 @@ mod consistency_validation_tests {
 
         let config = test_builders::simple_canopus_config("dotanuki-labs");
 
-        let validation = validator.validate_codeowners(&context, &config).await;
+        let validation = validator.validate_codeowners(&context, &config).await.unwrap();
 
-        let user_not_found = ValidationDiagnostic::builder()
-            .kind(DiagnosticKindFactory::user_does_not_belong_to_organization("ufs"))
+        let user_not_found = ValidationIssue::builder()
+            .kind(ValidationIssueKindFactory::user_does_not_belong_to_organization("ufs"))
             .line_number(1)
             .description("'ufs' user does not belong to this organization")
             .build();
 
-        let expected = CodeownersValidationError::from(user_not_found);
-        assertor::assert_that!(validation.into()).is_equal_to(expected);
+        let expected = ValidationOutcome::IssuesDetected(vec![user_not_found]);
+        assertor::assert_that!(validation).is_equal_to(expected);
     }
 
     #[tokio::test]
@@ -714,26 +728,28 @@ mod consistency_validation_tests {
 
         let config = test_builders::simple_canopus_config("dotanuki-labs");
 
-        let validation = validator.validate_codeowners(&context, &config).await;
+        let validation = validator.validate_codeowners(&context, &config).await.unwrap();
 
-        let user_not_found = ValidationDiagnostic::builder()
-            .kind(DiagnosticKindFactory::team_does_not_exist("dotanuki-labs", "devops"))
+        let user_not_found = ValidationIssue::builder()
+            .kind(ValidationIssueKindFactory::team_does_not_exist(
+                "dotanuki-labs",
+                "devops",
+            ))
             .line_number(2)
             .description("'devops' team does not belong to 'dotanuki-labs' organization")
             .build();
 
-        let expected = CodeownersValidationError::from(user_not_found);
-        assertor::assert_that!(validation.into()).is_equal_to(expected);
+        let expected = ValidationOutcome::IssuesDetected(vec![user_not_found]);
+        assertor::assert_that!(validation).is_equal_to(expected);
     }
 }
 
 #[cfg(test)]
 mod configuration_aware_tests {
     use crate::canopus::validation::test_builders;
-    use crate::core::errors::test_helpers::DiagnosticKindFactory;
-    use crate::core::errors::{CodeownersValidationError, ValidationDiagnostic};
-    use crate::core::models::config;
     use crate::core::models::config::{CanopusConfig, Ownership};
+    use crate::core::models::test_helpers::ValidationIssueKindFactory;
+    use crate::core::models::{ValidationIssue, ValidationOutcome, config};
     use assertor::{EqualityAssertion, ResultAssertion};
     use indoc::indoc;
 
@@ -787,16 +803,16 @@ mod configuration_aware_tests {
             },
         };
 
-        let validation = validator.validate_codeowners(&context, &config).await;
+        let validation = validator.validate_codeowners(&context, &config).await.unwrap();
 
-        let email_owner_not_allowed = ValidationDiagnostic::builder()
-            .kind(DiagnosticKindFactory::github_owners_only())
+        let email_owner_not_allowed = ValidationIssue::builder()
+            .kind(ValidationIssueKindFactory::github_owners_only())
             .line_number(0)
             .description("email owner is not allowed")
             .build();
 
-        let expected = CodeownersValidationError::from(email_owner_not_allowed);
-        assertor::assert_that!(validation.into()).is_equal_to(expected);
+        let expected = ValidationOutcome::IssuesDetected(vec![email_owner_not_allowed]);
+        assertor::assert_that!(validation).is_equal_to(expected);
     }
 
     #[tokio::test]
@@ -823,16 +839,16 @@ mod configuration_aware_tests {
             },
         };
 
-        let validation = validator.validate_codeowners(&context, &config).await;
+        let validation = validator.validate_codeowners(&context, &config).await.unwrap();
 
-        let only_team_owner_allowed = ValidationDiagnostic::builder()
-            .kind(DiagnosticKindFactory::github_team_owners_only())
+        let only_team_owner_allowed = ValidationIssue::builder()
+            .kind(ValidationIssueKindFactory::github_team_owners_only())
             .line_number(0)
             .description("only github team owner is allowed")
             .build();
 
-        let expected = CodeownersValidationError::from(only_team_owner_allowed);
-        assertor::assert_that!(validation.into()).is_equal_to(expected);
+        let expected = ValidationOutcome::IssuesDetected(vec![only_team_owner_allowed]);
+        assertor::assert_that!(validation).is_equal_to(expected);
     }
 
     #[tokio::test]
@@ -859,15 +875,15 @@ mod configuration_aware_tests {
             },
         };
 
-        let validation = validator.validate_codeowners(&context, &config).await;
+        let validation = validator.validate_codeowners(&context, &config).await.unwrap();
 
-        let only_one_owner_allowed = ValidationDiagnostic::builder()
-            .kind(DiagnosticKindFactory::single_owner_only())
+        let only_one_owner_allowed = ValidationIssue::builder()
+            .kind(ValidationIssueKindFactory::single_owner_only())
             .line_number(0)
             .description("Entry defines more than one owner for this glob")
             .build();
 
-        let expected = CodeownersValidationError::from(only_one_owner_allowed);
-        assertor::assert_that!(validation.into()).is_equal_to(expected);
+        let expected = ValidationOutcome::IssuesDetected(vec![only_one_owner_allowed]);
+        assertor::assert_that!(validation).is_equal_to(expected);
     }
 }

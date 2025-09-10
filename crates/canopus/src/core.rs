@@ -1,14 +1,15 @@
 // Copyright 2025 Dotanuki Labs
 // SPDX-License-Identifier: MIT
 
-pub mod errors;
 pub mod models;
 
 #[cfg(test)]
 mod tests {
     use crate::core::models::codeowners::{CodeOwners, CodeOwnersEntry, OwnershipRecord};
     use crate::core::models::handles::Owner;
-    use assertor::{EqualityAssertion, ResultAssertion};
+    use crate::core::models::test_helpers::ValidationIssueKindFactory;
+    use crate::core::models::{ValidationIssue, ValidationOutcome};
+    use assertor::EqualityAssertion;
     use globset::Glob;
     use indoc::indoc;
     use std::collections::HashMap;
@@ -28,7 +29,7 @@ mod tests {
             vec![OwnershipRecord::new(0, Glob::new("*.rs")?)],
         )]);
 
-        let expected = CodeOwners::new(vec![entry], ownerships);
+        let expected = CodeOwners::new(vec![entry], ValidationOutcome::NoIssues, ownerships);
 
         assertor::assert_that!(codeowners).is_equal_to(expected);
         Ok(())
@@ -55,7 +56,7 @@ mod tests {
             vec![OwnershipRecord::new(2, Glob::new("*.rs")?)],
         )]);
 
-        let expected = CodeOwners::new(entries, ownerships);
+        let expected = CodeOwners::new(entries, ValidationOutcome::NoIssues, ownerships);
 
         assertor::assert_that!(codeowners).is_equal_to(expected);
         Ok(())
@@ -77,7 +78,7 @@ mod tests {
             vec![OwnershipRecord::new(0, Glob::new("*.rs")?)],
         )]);
 
-        let expected = CodeOwners::new(vec![entry], ownerships);
+        let expected = CodeOwners::new(vec![entry], ValidationOutcome::NoIssues, ownerships);
 
         assertor::assert_that!(codeowners).is_equal_to(expected);
         Ok(())
@@ -104,7 +105,7 @@ mod tests {
             ),
         ]);
 
-        let expected = CodeOwners::new(vec![entry], ownerships);
+        let expected = CodeOwners::new(vec![entry], ValidationOutcome::NoIssues, ownerships);
 
         assertor::assert_that!(codeowners).is_equal_to(expected);
 
@@ -112,15 +113,17 @@ mod tests {
     }
 
     #[test]
-    fn should_fail_with_invalid_comment() {
+    fn should_accept_empty_comment() {
         let codeowners_rules = indoc! {"
-            // Not a valid comment
+            #
             *.rs    @org/rustaceans   ufs@dotanuki.dev
         "};
 
-        let parsing = CodeOwners::try_from(codeowners_rules);
+        let codeowners = CodeOwners::try_from(codeowners_rules).unwrap();
 
-        assertor::assert_that!(parsing).is_err();
+        let expected = ValidationOutcome::NoIssues;
+
+        assertor::assert_that!(codeowners.syntax_validation).is_equal_to(expected);
     }
 
     #[test]
@@ -129,9 +132,19 @@ mod tests {
             *.rs    ufs.dotanuki
         "};
 
-        let parsing = CodeOwners::try_from(codeowners_rules);
+        let codeowners = CodeOwners::try_from(codeowners_rules).unwrap();
 
-        assertor::assert_that!(parsing).is_err();
+        let syntax_issues = vec![
+            ValidationIssue::builder()
+                .kind(ValidationIssueKindFactory::invalid_syntax())
+                .line_number(0)
+                .description("cannot parse owner")
+                .build(),
+        ];
+
+        let expected = ValidationOutcome::IssuesDetected(syntax_issues);
+
+        assertor::assert_that!(codeowners.syntax_validation).is_equal_to(expected);
     }
 
     #[test]
@@ -140,8 +153,18 @@ mod tests {
             *.rs    @dotanuki--labs
         "};
 
-        let parsing = CodeOwners::try_from(codeowners_rules);
+        let codeowners = CodeOwners::try_from(codeowners_rules).unwrap();
 
-        assertor::assert_that!(parsing).is_err();
+        let syntax_issues = vec![
+            ValidationIssue::builder()
+                .kind(ValidationIssueKindFactory::invalid_syntax())
+                .line_number(0)
+                .description("cannot parse owner")
+                .build(),
+        ];
+
+        let expected = ValidationOutcome::IssuesDetected(syntax_issues);
+
+        assertor::assert_that!(codeowners.syntax_validation).is_equal_to(expected);
     }
 }
