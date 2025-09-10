@@ -35,4 +35,5 @@ assert_cmd.workspace = true
 assertor.workspace = true
 indoc.workspace = true
 httpmock.workspace = true
+predicates.workspace = true
 temp-dir.workspace = true

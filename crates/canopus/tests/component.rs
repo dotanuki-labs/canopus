@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 use assert_cmd::Command;
+use predicates::str::contains;
 use std::env::current_dir;
 
 fn sut() -> Command {
@@ -9,18 +10,36 @@ fn sut() -> Command {
     Command::cargo_bin("canopus").expect("Failed to create a command")
 }
 
-#[test]
-fn validate_own_codeowners_configuration() {
+fn find_project_root() -> String {
     let current_dir = current_dir().unwrap();
-    let project_root = current_dir // tests
+    current_dir // tests
         .parent()
         .unwrap() // crates
         .parent()
         .unwrap() // root
         .to_str()
-        .unwrap();
+        .unwrap()
+        .to_owned()
+}
 
-    let args = ["validate", "-p", project_root];
+#[test]
+fn self_validate_codeowners_configuration() {
+    let project_root = find_project_root();
 
-    sut().args(args).assert().success();
+    let args = ["validate", "-p", project_root.as_str()];
+
+    sut().args(args).assert().success().stdout(contains("No issues found"));
+}
+
+#[test]
+fn self_repair_codeowners_configuration() {
+    let project_root = find_project_root();
+
+    let args = ["repair", "-p", project_root.as_str(), "--remove-lines"];
+
+    sut()
+        .args(args)
+        .assert()
+        .success()
+        .stdout(contains("Nothing to repair"));
 }
