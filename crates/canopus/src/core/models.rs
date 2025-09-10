@@ -59,9 +59,9 @@ impl Display for IssueKind {
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct ValidationIssue {
+    pub line: usize,
+    pub context: String,
     kind: IssueKind,
-    line: usize,
-    context: String,
 }
 
 #[derive(Default)]

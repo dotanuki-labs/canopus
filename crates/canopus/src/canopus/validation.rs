@@ -26,12 +26,12 @@ impl CodeOwnersValidator {
         }
     }
 
-    pub async fn validate_codeowners(
+    pub async fn validate(
         &self,
         codeowners_context: &CodeOwnersContext,
         canopus_config: &CanopusConfig,
     ) -> anyhow::Result<ValidationOutcome> {
-        let project_root = codeowners_context.project_root.as_path();
+        let project_root = codeowners_context.project_path.as_path();
         let codeowners = CodeOwners::try_from(codeowners_context.contents.as_str())?;
         log::info!("Syntax errors : not found");
 
@@ -61,6 +61,7 @@ impl CodeOwnersValidator {
                 ValidationOutcome::IssuesDetected(issues) => Some(issues),
             })
             .flatten()
+            .sorted_by_key(|issue| issue.line)
             .collect_vec();
 
         Ok(ValidationOutcome::IssuesDetected(all_issues))
@@ -412,8 +413,8 @@ mod test_builders {
 
     pub fn codeowners_attributes(contents: &str) -> CodeOwnersContext {
         CodeOwnersContext {
-            project_root: PathBuf::from("/usr/projects/my-project"),
-            location: PathBuf::from("/usr/projects/my-project/.github/CODEOWNERS"),
+            project_path: PathBuf::from("/usr/projects/my-project"),
+            codeowners_path: PathBuf::from("/usr/projects/my-project/.github/CODEOWNERS"),
             contents: contents.to_string(),
         }
     }
@@ -471,7 +472,7 @@ mod structural_validation_tests {
 
         let config = test_builders::simple_canopus_config("dotanuki-labs");
 
-        let validation = validator.validate_codeowners(&context, &config).await;
+        let validation = validator.validate(&context, &config).await;
 
         assertor::assert_that!(validation).is_ok();
     }
@@ -487,7 +488,7 @@ mod structural_validation_tests {
 
         let config = test_builders::simple_canopus_config("dotanuki-labs");
 
-        let validation = validator.validate_codeowners(&context, &config).await.unwrap();
+        let validation = validator.validate(&context, &config).await.unwrap();
 
         let issue = ValidationIssue::builder()
             .kind(ValidationIssueKindFactory::invalid_syntax())
@@ -511,7 +512,7 @@ mod structural_validation_tests {
 
         let config = test_builders::simple_canopus_config("dotanuki-labs");
 
-        let validation = validator.validate_codeowners(&context, &config).await.unwrap();
+        let validation = validator.validate(&context, &config).await.unwrap();
 
         let issue = ValidationIssue::builder()
             .kind(ValidationIssueKindFactory::invalid_syntax())
@@ -535,7 +536,7 @@ mod structural_validation_tests {
 
         let config = test_builders::simple_canopus_config("dotanuki-labs");
 
-        let validation = validator.validate_codeowners(&context, &config).await.unwrap();
+        let validation = validator.validate(&context, &config).await.unwrap();
 
         let invalid_glob = ValidationIssue::builder()
             .kind(ValidationIssueKindFactory::invalid_syntax())
@@ -569,7 +570,7 @@ mod structural_validation_tests {
 
         let config = test_builders::simple_canopus_config("dotanuki-labs");
 
-        let validation = validator.validate_codeowners(&context, &config).await.unwrap();
+        let validation = validator.validate(&context, &config).await.unwrap();
 
         let issue = ValidationIssue::builder()
             .kind(ValidationIssueKindFactory::dangling_glob_pattern())
@@ -597,7 +598,7 @@ mod structural_validation_tests {
 
         let config = test_builders::simple_canopus_config("dotanuki-labs");
 
-        let validation = validator.validate_codeowners(&context, &config).await.unwrap();
+        let validation = validator.validate(&context, &config).await.unwrap();
 
         let duplicated_ownership = ValidationIssue::builder()
             .kind(ValidationIssueKindFactory::duplicate_ownership())
@@ -625,7 +626,7 @@ mod structural_validation_tests {
 
         let config = test_builders::simple_canopus_config("dotanuki-labs");
 
-        let validation = validator.validate_codeowners(&context, &config).await.unwrap();
+        let validation = validator.validate(&context, &config).await.unwrap();
 
         let dangling_glob = ValidationIssue::builder()
             .kind(ValidationIssueKindFactory::dangling_glob_pattern())
@@ -639,7 +640,7 @@ mod structural_validation_tests {
             .description("*.rs defined multiple times : lines [0, 2]")
             .build();
 
-        let issues = vec![dangling_glob, duplicated_ownership];
+        let issues = vec![duplicated_ownership, dangling_glob];
         let expected = ValidationOutcome::IssuesDetected(issues);
         assertor::assert_that!(validation).is_equal_to(expected);
     }
@@ -673,7 +674,7 @@ mod consistency_validation_tests {
 
         let config = test_builders::simple_canopus_config("dotanuki-labs");
 
-        let validation = validator.validate_codeowners(&context, &config).await;
+        let validation = validator.validate(&context, &config).await;
 
         assertor::assert_that!(validation).is_ok();
     }
@@ -696,7 +697,7 @@ mod consistency_validation_tests {
 
         let config = test_builders::simple_canopus_config("dotanuki-labs");
 
-        let validation = validator.validate_codeowners(&context, &config).await.unwrap();
+        let validation = validator.validate(&context, &config).await.unwrap();
 
         let user_not_found = ValidationIssue::builder()
             .kind(ValidationIssueKindFactory::user_does_not_belong_to_organization("ufs"))
@@ -728,7 +729,7 @@ mod consistency_validation_tests {
 
         let config = test_builders::simple_canopus_config("dotanuki-labs");
 
-        let validation = validator.validate_codeowners(&context, &config).await.unwrap();
+        let validation = validator.validate(&context, &config).await.unwrap();
 
         let user_not_found = ValidationIssue::builder()
             .kind(ValidationIssueKindFactory::team_does_not_exist(
@@ -774,7 +775,7 @@ mod configuration_aware_tests {
             ..Default::default()
         };
 
-        let validation = validator.validate_codeowners(&context, &config).await;
+        let validation = validator.validate(&context, &config).await;
 
         assertor::assert_that!(validation).is_ok();
     }
@@ -803,7 +804,7 @@ mod configuration_aware_tests {
             },
         };
 
-        let validation = validator.validate_codeowners(&context, &config).await.unwrap();
+        let validation = validator.validate(&context, &config).await.unwrap();
 
         let email_owner_not_allowed = ValidationIssue::builder()
             .kind(ValidationIssueKindFactory::github_owners_only())
@@ -839,7 +840,7 @@ mod configuration_aware_tests {
             },
         };
 
-        let validation = validator.validate_codeowners(&context, &config).await.unwrap();
+        let validation = validator.validate(&context, &config).await.unwrap();
 
         let only_team_owner_allowed = ValidationIssue::builder()
             .kind(ValidationIssueKindFactory::github_team_owners_only())
@@ -875,7 +876,7 @@ mod configuration_aware_tests {
             },
         };
 
-        let validation = validator.validate_codeowners(&context, &config).await.unwrap();
+        let validation = validator.validate(&context, &config).await.unwrap();
 
         let only_one_owner_allowed = ValidationIssue::builder()
             .kind(ValidationIssueKindFactory::single_owner_only())
