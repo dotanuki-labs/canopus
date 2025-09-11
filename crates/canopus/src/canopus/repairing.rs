@@ -19,7 +19,7 @@ pub fn repair_code_owners(
     };
 
     // Create a new CodeOwners using new lines
-    // and add a new line at the end of the file
+    // but also add a new line at the end of the file
     let mut new_codeowners = new_lines.join("\n");
     new_codeowners.push('\n');
 

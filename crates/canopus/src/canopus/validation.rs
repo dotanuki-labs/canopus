@@ -14,6 +14,7 @@ use itertools::Itertools;
 use std::collections::HashSet;
 use std::path::PathBuf;
 
+/// The main driver for validating a parsed CodeOwners configuration
 pub struct CodeOwnersValidator {
     github_consistency_checker: GithubConsistencyChecker,
     path_walker: PathWalker,
@@ -38,19 +39,16 @@ impl CodeOwnersValidator {
         // All parsing issues must be flagged at this point
         log::info!("Syntax errors : not found");
 
-        let gh_org = canopus_config.general.github_organization.as_str();
-
         // In the future, we could run all these validations in parallel
         // although check against Github API must drag most of the execution
         // time here
         let validations = vec![
-            codeowners.syntax_validation.clone(),
+            codeowners.syntax_validation.clone(), // We must include this
             self.check_non_matching_glob_patterns(&codeowners, &self.path_walker.walk(project_root))?,
             self.check_duplicated_owners(&codeowners)?,
             self.check_multiple_ownership_per_entry(&codeowners, canopus_config)?,
             self.check_allowed_owners(&codeowners, canopus_config)?,
-            self.check_github_consistency(gh_org, &codeowners, canopus_config)
-                .await?,
+            self.check_github_consistency(&codeowners, canopus_config).await?,
         ];
 
         // Short circuit in case there is no issues
@@ -217,7 +215,7 @@ impl CodeOwnersValidator {
         code_owners: &CodeOwners,
         canopus_config: &CanopusConfig,
     ) -> anyhow::Result<ValidationOutcome> {
-        // This check takes precedence over email owners
+        // This option takes precedence over email owners
         if canopus_config
             .ownership
             .enforce_github_teams_owners
@@ -226,7 +224,6 @@ impl CodeOwnersValidator {
             return self.check_only_github_teams_owners(code_owners);
         };
 
-        // If not short-circuited, we evaluate email owners allowance
         if canopus_config
             .ownership
             .forbid_email_owners
@@ -294,7 +291,6 @@ impl CodeOwnersValidator {
 
     async fn check_github_consistency(
         &self,
-        organization: &str,
         code_owners: &CodeOwners,
         canopus_config: &CanopusConfig,
     ) -> anyhow::Result<ValidationOutcome> {
@@ -308,6 +304,7 @@ impl CodeOwnersValidator {
             return Ok(ValidationOutcome::NoIssues);
         }
 
+        let gh_organization = canopus_config.general.github_organization.as_str();
         let unique_ownerships = code_owners.unique_owners();
 
         let consistency_checks = unique_ownerships
@@ -316,10 +313,10 @@ impl CodeOwnersValidator {
                 match owner {
                     Owner::GithubUser(identity) => {
                         self.github_consistency_checker
-                            .github_identity(organization, identity)
+                            .github_identity(gh_organization, identity)
                             .await
                     },
-                    Owner::GithubTeam(team) => self.github_consistency_checker.github_team(organization, team).await,
+                    Owner::GithubTeam(team) => self.github_consistency_checker.github_team(gh_organization, team).await,
                     Owner::EmailAddress(_) => Ok(()),
                 }
             })

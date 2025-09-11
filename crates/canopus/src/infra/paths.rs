@@ -10,6 +10,9 @@ pub trait DirWalking {
 
 pub enum PathWalker {
     GitAware,
+
+    // We opt for a define test doubles with test-only
+    // visibility, pattern-matching them when needed
     #[cfg(test)]
     FakePaths(Vec<String>),
 }

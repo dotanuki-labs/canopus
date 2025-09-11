@@ -11,6 +11,13 @@ pub static DEFAULT_VALUE_ENFORCE_GITHUB_TEAMS_OWNERS: bool = false;
 pub static DEFAULT_VALUE_ENFORCE_ONE_OWNER_PER_LINE: bool = false;
 pub static DEFAULT_VALUE_FORBID_EMAIL_ADDRESSES: bool = false;
 
+/// The configuration options for canopus
+#[derive(Deserialize, Debug, Default)]
+pub struct CanopusConfig {
+    pub general: GeneralConfig,
+    pub ownership: OwnershipConfig,
+}
+
 #[derive(Deserialize, Debug, Default)]
 pub struct GeneralConfig {
     /// The Github organization that owns the target project
@@ -41,13 +48,7 @@ pub struct OwnershipConfig {
     pub forbid_email_owners: Option<bool>,
 }
 
-/// The configuration options for canopus
-#[derive(Deserialize, Debug, Default)]
-pub struct CanopusConfig {
-    pub general: GeneralConfig,
-    pub ownership: OwnershipConfig,
-}
-
+/// Parsing the configuration file from a path
 impl TryFrom<&Path> for CanopusConfig {
     type Error = anyhow::Error;
 

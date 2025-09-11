@@ -17,8 +17,10 @@ pub trait CheckGithubConsistency {
 pub enum GithubConsistencyChecker {
     ApiBased(octocrab::Octocrab),
 
-    // We define test double as variants for the sake of
-    // avoid compilation struggles with async fn in traits
+    // We opt for a define test doubles with test-only
+    // visibility, pattern-matching them when needed.
+    // In this case, it helps us to avoid compilation struggles
+    // with async fn in traits
     #[cfg(test)]
     FakeChecks(FakeGithubState),
     #[cfg(test)]
@@ -204,6 +206,8 @@ impl CheckGithubConsistency for GithubConsistencyChecker {
         match self {
             GithubConsistencyChecker::ApiBased(github_client) => {
                 let defined_organization = handle.organization.inner();
+
+                // Simple offline guard
                 if defined_organization != organization {
                     return Err(ConsistencyIssue::TeamDoesNotMatchOrganization(handle.clone()));
                 };
