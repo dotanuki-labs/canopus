@@ -100,9 +100,7 @@ impl CodeOwnersValidator {
             .iter()
             .map(|rule| {
                 ValidationIssue::builder()
-                    .kind(IssueKind::Configuration(
-                        ConfigurationIssue::OnlyOneOwnerPerEntryAllowed,
-                    ))
+                    .kind(IssueKind::Configuration(ConfigurationIssue::OnlyOneOwnerPerEntry))
                     .line_number(rule.line_number)
                     .description("Entry defines more than one owner for this glob")
                     .build()
@@ -232,7 +230,7 @@ impl CodeOwnersValidator {
             .into_iter()
             .map(|owner| {
                 ValidationIssue::builder()
-                    .kind(IssueKind::Configuration(ConfigurationIssue::EmailOwnerNotAllowed))
+                    .kind(IssueKind::Configuration(ConfigurationIssue::EmailOwnerForbidden))
                     .line_number(code_owners.occurrences(owner)[0])
                     .message("email owner is not allowed".to_string())
                     .build()

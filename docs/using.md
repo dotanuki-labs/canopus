@@ -43,9 +43,9 @@ and report the following issues:
 | TeamDoesNotExist                   | Github Consistency     | No                |
 | OutsiderUser                       | Github Consistency     | No                |
 | UserDoesNotExist                   | Github Consistency     | No                |
-| EmailOwnerNotAllowed               | Custom Configuration   | Yes               |
+| EmailOwnerForbidden                | Custom Configuration   | Yes               |
 | OnlyGithubTeamOwnerAllowed         | Custom Configuration   | Yes               |
-| OnlyOneOwnerPerEntryAllowed        | Custom Configuration   | Yes               |
+| OnlyOneOwnerPerEntry               | Custom Configuration   | Yes               |
 
 > [!WARNING]
 >
@@ -82,7 +82,7 @@ By default, **canopus** will preserve broken `CODEOWNERS` entries by commenting 
 # *.js    dotanuki/frontend (preserved by canopus)
 ```
 
-To delete broken `CODEOWNERS` entries instead 
+To delete broken `CODEOWNERS` entries instead
 
 ```bash
 canopus repair -p <project-root> --remove-lines
@@ -106,8 +106,7 @@ enforce-one-owner-per-line = false      # Optional (default : false)
 ```
 
 For large projects managed by multiple teams and leveraging an extensive `CODEOWNERS`
-setting, the general advice is having a `canopus.toml` like: 
-
+setting, the general advice is having a `canopus.toml` like:
 
 ```toml
 [general]

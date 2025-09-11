@@ -7,7 +7,7 @@
 written in pure Rust.
 
 Please check our
-[documentation](https://dotanuki-labs.github.io/canopus) 
+[documentation](https://dotanuki-labs.github.io/canopus)
 to learn more!
 
 ## License

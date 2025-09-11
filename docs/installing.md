@@ -26,7 +26,8 @@ You can grab a binary directly from [Github Releases](https://github.com/dotanuk
 
 ## Building from source
 
-You can install the latest release directly from [crates.io](https://crates.io/crates/canopus) (requires [Rust](https://rustup.rs/))
+You can install the latest release directly from
+[crates.io](https://crates.io/crates/canopus) (requires [Rust](https://rustup.rs/))
 
 ```bash
 cargo install canopus
