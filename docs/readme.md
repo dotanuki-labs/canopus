@@ -8,8 +8,15 @@ written in pure Rust. It should be fast enough to be configured as a
 [Git hook](https://git-scm.com/book/en/v2/Customizing-Git-Git-Hooks)
 in offline mode, and eventually also in online mode.
 
-Hopefully `canopus` will spot errors not handle by Github, for instance
-validating dangling glob patterns (the ones won't match any project path).
+## Main features
+
+- local validation of `CODEOWNERS`, including additional syntax checks
+- quick repairing of `CODEOWNERS`
+- offline and online execution modes
+- sensible opt-ins for better `CODEOWNERS` structure
+
+`canopus` should be able to spot some errors not handled by Github, like
+detecting dangling glob patterns (i.e., the ones won't match any project path).
 For instance, this is the Pull Request preview for a `CODEOWNERS` change
 for this project, which should be an error since there is no `.samples`
 path around:
@@ -19,3 +26,7 @@ path around:
 In addition to that, and unlike other competing tools, `canopus` brings
 configuration options to encourage good practices on code ownership, especially on
 large multimodular projects or monorepos.
+
+`canopus` is distributed as a self-contained binary compatible with macOS and Linux,
+and also through Docker. This code adheres to the
+[MIT license](https://choosealicense.com/licenses/mit)
