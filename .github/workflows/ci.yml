@@ -11,7 +11,7 @@ on:
 
 jobs:
   docs-lint:
-    runs-on: warp-ubuntu-2404-x64-2x # ubuntu-24.04
+    runs-on: ubuntu-24.04
     steps:
       - name: Project Checkout
         uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
@@ -37,7 +37,7 @@ jobs:
   docs-build-deploy:
     needs: docs-lint
     if: ${{ github.ref == 'refs/heads/main' }}
-    runs-on: warp-ubuntu-2404-x64-2x # ubuntu-24.04
+    runs-on: ubuntu-24.04
     permissions:
       contents: read
       pages: write
@@ -55,7 +55,7 @@ jobs:
         uses: actions/deploy-pages@d6db90164ac5ed86f2b6aed7e0febac5b3c0c03e # v4.0.5
 
   rust-lint:
-    runs-on: warp-ubuntu-2404-x64-4x # ubuntu-24.04
+    runs-on: ubuntu-24.04
 
     steps:
       - name: Project Checkout
@@ -65,7 +65,7 @@ jobs:
         run: cargo xtasks sources
 
   rust-tests:
-    runs-on: warp-ubuntu-2404-x64-4x # ubuntu-24.04
+    runs-on: ubuntu-24.04
 
     steps:
       - name: Project Checkout
@@ -84,8 +84,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        # os: [ubuntu-24.04, macos-15]
-        os: [ warp-ubuntu-2404-x64-4x, warp-macos-15-arm64-6x ]
+        os: [ubuntu-24.04, macos-15]
 
     steps:
       - name: Project Checkout
@@ -107,7 +106,7 @@ jobs:
 
   rust-artifacts:
     needs: rust-build
-    runs-on: warp-ubuntu-2404-x64-4x # ubuntu-24.04
+    runs-on: ubuntu-24.04
 
     steps:
       - name: Project Checkout
@@ -138,7 +137,7 @@ jobs:
 
   rust-security:
     needs: rust-build
-    runs-on: warp-ubuntu-2404-x64-4x # ubuntu-24.04
+    runs-on: ubuntu-24.04
 
     steps:
       - name: Project Checkout
@@ -149,7 +148,7 @@ jobs:
 
   docker-build:
     needs: rust-build
-    runs-on: warp-ubuntu-2404-x64-4x # ubuntu-24.04
+    runs-on: ubuntu-24.04
 
     steps:
       - name: Project Checkout
@@ -167,16 +166,15 @@ jobs:
           context: .
           push: false
           tags: "dotanuki-labs/canopus:latest"
-          cache-from: type=gha,url=http://127.0.0.1:49160/,version=1
-          cache-to: type=gha,url=http://127.0.0.1:49160/,mode=max,version=1
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
 
   compatibility-tests:
     needs: rust-build
-    runs-on: warp-ubuntu-2404-x64-2x
-#    runs-on: ${{ matrix.os }}
-#    strategy:
-#      matrix:
-        # os: [ ubuntu-22.04, macos-13 ]
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+         os: [ ubuntu-22.04, macos-13 ]
 
     steps:
       - name: Project Checkout
@@ -201,7 +199,7 @@ jobs:
           ./artifacts/canopus-binaries-Linux/canopus-x86_64-unknown-linux-musl --help
 
   all-checks:
-    runs-on: warp-ubuntu-2404-x64-2x
+    runs-on: ubuntu-24.04
     needs: [docs-lint, docker-build, rust-artifacts, rust-security, compatibility-tests]
     steps:
       - name: Report success
