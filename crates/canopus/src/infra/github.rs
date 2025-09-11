@@ -16,12 +16,13 @@ pub trait CheckGithubConsistency {
 
 pub enum GithubConsistencyChecker {
     ApiBased(octocrab::Octocrab),
+
+    // We define test double as variants for the sake of
+    // avoid compilation struggles with async fn in traits
     #[cfg(test)]
     FakeChecks(FakeGithubState),
     #[cfg(test)]
     ConsistentState,
-    #[cfg(test)]
-    AlwaysPanic,
 }
 
 impl GithubConsistencyChecker {
@@ -196,8 +197,6 @@ impl CheckGithubConsistency for GithubConsistencyChecker {
             GithubConsistencyChecker::FakeChecks(state) => self.check_registered_fake_user(state, identity.inner()),
             #[cfg(test)]
             GithubConsistencyChecker::ConsistentState => Ok(()),
-            #[cfg(test)]
-            GithubConsistencyChecker::AlwaysPanic => panic!("Unreachable information"),
         }
     }
 
@@ -218,8 +217,6 @@ impl CheckGithubConsistency for GithubConsistencyChecker {
             },
             #[cfg(test)]
             GithubConsistencyChecker::ConsistentState => Ok(()),
-            #[cfg(test)]
-            GithubConsistencyChecker::AlwaysPanic => panic!("Unreachable information"),
         }
     }
 }

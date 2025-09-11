@@ -11,40 +11,49 @@ pub fn repair_code_owners(
 ) -> anyhow::Result<()> {
     let codeowners_lines = codeowners_context.contents.lines().collect_vec();
 
+    // Evaluate lines to remove or patch
     let new_lines = if remove_lines {
-        codeowners_lines
-            .into_iter()
-            .enumerate()
-            .filter_map(|(line, content)| {
-                if !lines_to_repair.contains(&line) {
-                    Some(content.to_string())
-                } else {
-                    None
-                }
-            })
-            .collect_vec()
+        remove_flagged_lines(&lines_to_repair, &codeowners_lines)
     } else {
-        codeowners_lines
-            .into_iter()
-            .enumerate()
-            .map(|(line, content)| {
-                if lines_to_repair.contains(&line) {
-                    format!("# {} (preserved by canopus)", content)
-                } else {
-                    content.to_string()
-                }
-            })
-            .collect_vec()
+        patch_flagged_lines(lines_to_repair, codeowners_lines)
     };
 
+    // Create a new CodeOwners using new lines
+    // and add a new line at the end of the file
     let mut new_codeowners = new_lines.join("\n");
-
-    // Push a new line at the end of the file
     new_codeowners.push('\n');
 
     std::fs::write(&codeowners_context.codeowners_path, new_codeowners)?;
 
     Ok(())
+}
+
+fn patch_flagged_lines(lines_to_repair: Vec<usize>, codeowners_lines: Vec<&str>) -> Vec<String> {
+    codeowners_lines
+        .into_iter()
+        .enumerate()
+        .map(|(line, content)| {
+            if lines_to_repair.contains(&line) {
+                format!("# {} (preserved by canopus)", content)
+            } else {
+                content.to_string()
+            }
+        })
+        .collect_vec()
+}
+
+fn remove_flagged_lines(lines_to_repair: &[usize], codeowners_lines: &Vec<&str>) -> Vec<String> {
+    codeowners_lines
+        .iter()
+        .enumerate()
+        .filter_map(|(line, content)| {
+            if !lines_to_repair.contains(&line) {
+                Some(content.to_string())
+            } else {
+                None
+            }
+        })
+        .collect_vec()
 }
 
 #[cfg(test)]

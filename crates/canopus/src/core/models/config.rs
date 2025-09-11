@@ -5,8 +5,14 @@ use anyhow::bail;
 use serde::Deserialize;
 use std::path::Path;
 
+/// Defaults for optional configuration values
+pub static DEFAULT_VALUE_OFFLINE_CHECKS_ONLY: bool = false;
+pub static DEFAULT_VALUE_ENFORCE_GITHUB_TEAMS_OWNERS: bool = false;
+pub static DEFAULT_VALUE_ENFORCE_ONE_OWNER_PER_LINE: bool = false;
+pub static DEFAULT_VALUE_FORBID_EMAIL_ADDRESSES: bool = false;
+
 #[derive(Deserialize, Debug, Default)]
-pub struct General {
+pub struct GeneralConfig {
     /// The Github organization that owns the target project
     #[serde(rename(deserialize = "github-organization"))]
     pub github_organization: String,
@@ -18,7 +24,7 @@ pub struct General {
 }
 
 #[derive(Deserialize, Debug, Default)]
-pub struct Ownership {
+pub struct OwnershipConfig {
     /// Whether we should enforce only Github teams as owners
     #[serde(rename(deserialize = "enforce-github-teams-owners"))]
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -35,10 +41,11 @@ pub struct Ownership {
     pub forbid_email_owners: Option<bool>,
 }
 
+/// The configuration options for canopus
 #[derive(Deserialize, Debug, Default)]
 pub struct CanopusConfig {
-    pub general: General,
-    pub ownership: Ownership,
+    pub general: GeneralConfig,
+    pub ownership: OwnershipConfig,
 }
 
 impl TryFrom<&Path> for CanopusConfig {

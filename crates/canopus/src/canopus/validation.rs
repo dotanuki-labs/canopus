@@ -2,11 +2,12 @@
 // SPDX-License-Identifier: MIT
 
 use crate::core::models::codeowners::{CodeOwners, CodeOwnersContext, CodeOwnersEntry};
-use crate::core::models::config::CanopusConfig;
-use crate::core::models::handles::Owner;
-use crate::core::models::{
-    ConfigurationIssue, ConsistencyIssue, IssueKind, StructuralIssue, ValidationIssue, ValidationOutcome,
+use crate::core::models::config::{
+    CanopusConfig, DEFAULT_VALUE_ENFORCE_GITHUB_TEAMS_OWNERS, DEFAULT_VALUE_ENFORCE_ONE_OWNER_PER_LINE,
+    DEFAULT_VALUE_FORBID_EMAIL_ADDRESSES, DEFAULT_VALUE_OFFLINE_CHECKS_ONLY,
 };
+use crate::core::models::handles::Owner;
+use crate::core::models::{ConfigurationIssue, IssueKind, StructuralIssue, ValidationIssue, ValidationOutcome};
 use crate::infra::github::{CheckGithubConsistency, GithubConsistencyChecker};
 use crate::infra::paths::{DirWalking, PathWalker};
 use itertools::Itertools;
@@ -33,10 +34,15 @@ impl CodeOwnersValidator {
     ) -> anyhow::Result<ValidationOutcome> {
         let project_root = codeowners_context.project_path.as_path();
         let codeowners = CodeOwners::try_from(codeowners_context.contents.as_str())?;
+
+        // All parsing issues must be flagged at this point
         log::info!("Syntax errors : not found");
 
         let gh_org = canopus_config.general.github_organization.as_str();
 
+        // In the future, we could run all these validations in parallel
+        // although check against Github API must drag most of the execution
+        // time here
         let validations = vec![
             codeowners.syntax_validation.clone(),
             self.check_non_matching_glob_patterns(&codeowners, &self.path_walker.walk(project_root))?,
@@ -47,6 +53,7 @@ impl CodeOwnersValidator {
                 .await?,
         ];
 
+        // Short circuit in case there is no issues
         if validations
             .iter()
             .all(|outcome| matches!(outcome, ValidationOutcome::NoIssues))
@@ -54,6 +61,8 @@ impl CodeOwnersValidator {
             return Ok(ValidationOutcome::NoIssues);
         }
 
+        // We collect all spotted issues by iterating and flat mapping
+        // each validation outcome
         let all_issues = validations
             .into_iter()
             .filter_map(|outcome| match outcome {
@@ -72,7 +81,12 @@ impl CodeOwnersValidator {
         code_owners: &CodeOwners,
         canopus_config: &CanopusConfig,
     ) -> anyhow::Result<ValidationOutcome> {
-        if !canopus_config.ownership.enforce_one_owner_per_line.unwrap_or(false) {
+        // We short circuit if an opt-in disables this check
+        if !canopus_config
+            .ownership
+            .enforce_one_owner_per_line
+            .unwrap_or(DEFAULT_VALUE_ENFORCE_ONE_OWNER_PER_LINE)
+        {
             return Ok(ValidationOutcome::NoIssues);
         };
 
@@ -203,11 +217,21 @@ impl CodeOwnersValidator {
         code_owners: &CodeOwners,
         canopus_config: &CanopusConfig,
     ) -> anyhow::Result<ValidationOutcome> {
-        if canopus_config.ownership.enforce_github_teams_owners.unwrap_or(false) {
+        // This check takes precedence over email owners
+        if canopus_config
+            .ownership
+            .enforce_github_teams_owners
+            .unwrap_or(DEFAULT_VALUE_ENFORCE_GITHUB_TEAMS_OWNERS)
+        {
             return self.check_only_github_teams_owners(code_owners);
         };
 
-        if canopus_config.ownership.forbid_email_owners.unwrap_or(false) {
+        // If not short-circuited, we evaluate email owners allowance
+        if canopus_config
+            .ownership
+            .forbid_email_owners
+            .unwrap_or(DEFAULT_VALUE_FORBID_EMAIL_ADDRESSES)
+        {
             return self.check_non_email_owners(code_owners);
         };
 
@@ -274,7 +298,11 @@ impl CodeOwnersValidator {
         code_owners: &CodeOwners,
         canopus_config: &CanopusConfig,
     ) -> anyhow::Result<ValidationOutcome> {
-        let offline_checks_only = canopus_config.general.offline_checks_only.unwrap_or(false);
+        // We short circuit if an opt-in disables this check
+        let offline_checks_only = canopus_config
+            .general
+            .offline_checks_only
+            .unwrap_or(DEFAULT_VALUE_OFFLINE_CHECKS_ONLY);
 
         if offline_checks_only {
             return Ok(ValidationOutcome::NoIssues);
@@ -306,95 +334,7 @@ impl CodeOwnersValidator {
         let issues = consistency_results
             .into_iter()
             .filter_map(|check| check.err())
-            .map(|issue| match issue.clone() {
-                ConsistencyIssue::UserDoesNotExist(handle) => {
-                    let owner = Owner::GithubUser(handle.clone());
-                    let first_occurrence = code_owners.occurrences(&owner)[0];
-                    (
-                        issue,
-                        first_occurrence,
-                        format!("'{}' user does not exist", handle.inner()),
-                    )
-                },
-                ConsistencyIssue::OrganizationDoesNotExist(handle) => {
-                    let owner = Owner::GithubUser(handle.clone());
-                    let first_occurrence = code_owners.occurrences(&owner)[0];
-                    (
-                        issue,
-                        first_occurrence,
-                        format!("'{}' organization does not exist", handle.inner()),
-                    )
-                },
-                ConsistencyIssue::TeamDoesNotExist(handle) => {
-                    let owner = Owner::GithubTeam(handle.clone());
-                    let first_occurrence = code_owners.occurrences(&owner)[0];
-                    (
-                        issue,
-                        first_occurrence,
-                        format!(
-                            "'{}' team does not belong to '{}' organization",
-                            handle.name,
-                            handle.organization.inner()
-                        ),
-                    )
-                },
-                ConsistencyIssue::OutsiderUser(handle) => {
-                    let owner = Owner::GithubUser(handle.clone());
-                    let first_occurrence = code_owners.occurrences(&owner)[0];
-                    (
-                        issue,
-                        first_occurrence,
-                        format!("'{}' user does not belong to this organization", handle.inner()),
-                    )
-                },
-                ConsistencyIssue::CannotVerifyUser(handle) => {
-                    let owner = Owner::GithubUser(handle.clone());
-                    let first_occurrence = code_owners.occurrences(&owner)[0];
-                    (
-                        issue,
-                        first_occurrence,
-                        format!("cannot confirm if user '{}' exists", handle.inner()),
-                    )
-                },
-                ConsistencyIssue::CannotVerifyTeam(handle) => {
-                    let owner = Owner::GithubTeam(handle.clone());
-                    let first_occurrence = code_owners.occurrences(&owner)[0];
-                    (
-                        issue,
-                        first_occurrence,
-                        format!(
-                            "cannot confirm whether '{}/{}' team exists",
-                            handle.organization.inner(),
-                            handle.name
-                        ),
-                    )
-                },
-                ConsistencyIssue::CannotListMembersInTheOrganization(organization) => (
-                    issue,
-                    usize::MAX,
-                    format!("failed to list members that belong to '{}' organization", organization),
-                ),
-                ConsistencyIssue::TeamDoesNotMatchOrganization(handle) => {
-                    let owner = Owner::GithubTeam(handle.clone());
-                    let first_occurrence = code_owners.occurrences(&owner)[0];
-                    (
-                        issue,
-                        first_occurrence,
-                        format!(
-                            "team '{}/{}' does not belong to this organization",
-                            handle.organization.inner(),
-                            handle.name
-                        ),
-                    )
-                },
-            })
-            .map(|(issue, line, cause)| {
-                ValidationIssue::builder()
-                    .kind(IssueKind::Consistency(issue))
-                    .line_number(line)
-                    .message(cause)
-                    .build()
-            })
+            .map(|issue| issue.to_validation_issue(code_owners))
             .collect_vec();
 
         Ok(ValidationOutcome::IssuesDetected(issues))
@@ -421,7 +361,7 @@ mod test_builders {
 
     pub fn simple_canopus_config(github_organization: &str) -> CanopusConfig {
         CanopusConfig {
-            general: config::General {
+            general: config::GeneralConfig {
                 github_organization: github_organization.to_string(),
                 ..Default::default()
             },
@@ -441,12 +381,6 @@ mod test_builders {
     ) -> CodeOwnersValidator {
         let path_walker = PathWalker::with_paths(project_paths);
         let consistency_checker = GithubConsistencyChecker::FakeChecks(state);
-        CodeOwnersValidator::new(consistency_checker, path_walker)
-    }
-
-    pub fn panics_for_online_checks_validator(project_paths: Vec<&str>) -> CodeOwnersValidator {
-        let path_walker = PathWalker::with_paths(project_paths);
-        let consistency_checker = GithubConsistencyChecker::AlwaysPanic;
         CodeOwnersValidator::new(consistency_checker, path_walker)
     }
 }
@@ -748,7 +682,7 @@ mod consistency_validation_tests {
 #[cfg(test)]
 mod configuration_aware_tests {
     use crate::canopus::validation::test_builders;
-    use crate::core::models::config::{CanopusConfig, Ownership};
+    use crate::core::models::config::{CanopusConfig, OwnershipConfig};
     use crate::core::models::test_helpers::ValidationIssueKindFactory;
     use crate::core::models::{ValidationIssue, ValidationOutcome, config};
     use assertor::{EqualityAssertion, ResultAssertion};
@@ -764,11 +698,10 @@ mod configuration_aware_tests {
 
         let context = test_builders::codeowners_attributes(contents);
 
-        // Forces panic if any Github consistency checks are used
-        let validator = test_builders::panics_for_online_checks_validator(project_paths);
+        let validator = test_builders::structural_only_codeowners_validator(project_paths);
 
         let config = CanopusConfig {
-            general: config::General {
+            general: config::GeneralConfig {
                 github_organization: "dotanuki-labs".to_string(),
                 offline_checks_only: Some(true),
             },
@@ -790,15 +723,14 @@ mod configuration_aware_tests {
 
         let context = test_builders::codeowners_attributes(contents);
 
-        // Forces panic if any Github consistency checks are used
-        let validator = test_builders::panics_for_online_checks_validator(project_paths);
+        let validator = test_builders::structural_only_codeowners_validator(project_paths);
 
         let config = CanopusConfig {
-            general: config::General {
+            general: config::GeneralConfig {
                 github_organization: "dotanuki-labs".to_string(),
                 offline_checks_only: Some(true),
             },
-            ownership: Ownership {
+            ownership: OwnershipConfig {
                 forbid_email_owners: Some(true),
                 ..Default::default()
             },
@@ -826,15 +758,14 @@ mod configuration_aware_tests {
 
         let context = test_builders::codeowners_attributes(contents);
 
-        // Forces panic if any Github consistency checks are used
-        let validator = test_builders::panics_for_online_checks_validator(project_paths);
+        let validator = test_builders::structural_only_codeowners_validator(project_paths);
 
         let config = CanopusConfig {
-            general: config::General {
+            general: config::GeneralConfig {
                 github_organization: "dotanuki-labs".to_string(),
                 offline_checks_only: Some(true),
             },
-            ownership: Ownership {
+            ownership: OwnershipConfig {
                 enforce_github_teams_owners: Some(true),
                 ..Default::default()
             },
@@ -862,15 +793,14 @@ mod configuration_aware_tests {
 
         let context = test_builders::codeowners_attributes(contents);
 
-        // Forces panic if any Github consistency checks are used
-        let validator = test_builders::panics_for_online_checks_validator(project_paths);
+        let validator = test_builders::structural_only_codeowners_validator(project_paths);
 
         let config = CanopusConfig {
-            general: config::General {
+            general: config::GeneralConfig {
                 github_organization: "dotanuki-labs".to_string(),
                 offline_checks_only: Some(true),
             },
-            ownership: Ownership {
+            ownership: OwnershipConfig {
                 enforce_one_owner_per_line: Some(true),
                 ..Default::default()
             },

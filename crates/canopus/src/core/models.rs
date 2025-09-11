@@ -1,7 +1,8 @@
 // Copyright 2025 Dotanuki Labs
 // SPDX-License-Identifier: MIT
 
-use crate::core::models::handles::{GithubIdentityHandle, GithubTeamHandle};
+use crate::core::models::codeowners::CodeOwners;
+use crate::core::models::handles::{GithubIdentityHandle, GithubTeamHandle, Owner};
 use std::fmt::{Display, Formatter};
 
 pub mod codeowners;
@@ -31,6 +32,103 @@ pub enum ConsistencyIssue {
     TeamDoesNotMatchOrganization(GithubTeamHandle),
     TeamDoesNotExist(GithubTeamHandle),
     UserDoesNotExist(GithubIdentityHandle),
+}
+
+impl ConsistencyIssue {
+    // Pragmatic way to convert a consistency issue to a validation one,
+    // which requires aggregate contextual information from CodeOwners
+    pub fn to_validation_issue(&self, code_owners: &CodeOwners) -> ValidationIssue {
+        // We will build a triple for each variant of ConsistencyIssue
+        let (issue, occurrence, reason) = match self {
+            ConsistencyIssue::UserDoesNotExist(handle) => {
+                let owner = Owner::GithubUser(handle.clone());
+                let first_occurrence = code_owners.occurrences(&owner)[0];
+                (
+                    self,
+                    first_occurrence,
+                    format!("'{}' user does not exist", handle.inner()),
+                )
+            },
+            ConsistencyIssue::OrganizationDoesNotExist(handle) => {
+                let owner = Owner::GithubUser(handle.clone());
+                let first_occurrence = code_owners.occurrences(&owner)[0];
+                (
+                    self,
+                    first_occurrence,
+                    format!("'{}' organization does not exist", handle.inner()),
+                )
+            },
+            ConsistencyIssue::TeamDoesNotExist(handle) => {
+                let owner = Owner::GithubTeam(handle.clone());
+                let first_occurrence = code_owners.occurrences(&owner)[0];
+                (
+                    self,
+                    first_occurrence,
+                    format!(
+                        "'{}' team does not belong to '{}' organization",
+                        handle.name,
+                        handle.organization.inner()
+                    ),
+                )
+            },
+            ConsistencyIssue::OutsiderUser(handle) => {
+                let owner = Owner::GithubUser(handle.clone());
+                let first_occurrence = code_owners.occurrences(&owner)[0];
+                (
+                    self,
+                    first_occurrence,
+                    format!("'{}' user does not belong to this organization", handle.inner()),
+                )
+            },
+            ConsistencyIssue::CannotVerifyUser(handle) => {
+                let owner = Owner::GithubUser(handle.clone());
+                let first_occurrence = code_owners.occurrences(&owner)[0];
+                (
+                    self,
+                    first_occurrence,
+                    format!("cannot confirm if user '{}' exists", handle.inner()),
+                )
+            },
+            ConsistencyIssue::CannotVerifyTeam(handle) => {
+                let owner = Owner::GithubTeam(handle.clone());
+                let first_occurrence = code_owners.occurrences(&owner)[0];
+                (
+                    self,
+                    first_occurrence,
+                    format!(
+                        "cannot confirm whether '{}/{}' team exists",
+                        handle.organization.inner(),
+                        handle.name
+                    ),
+                )
+            },
+            ConsistencyIssue::CannotListMembersInTheOrganization(organization) => (
+                self,
+                usize::MAX, // Super hacky solution since we can't assign a line in this case
+                format!("failed to list members that belong to '{}' organization", organization),
+            ),
+            ConsistencyIssue::TeamDoesNotMatchOrganization(handle) => {
+                let owner = Owner::GithubTeam(handle.clone());
+                let first_occurrence = code_owners.occurrences(&owner)[0];
+                (
+                    self,
+                    first_occurrence,
+                    format!(
+                        "team '{}/{}' does not belong to this organization",
+                        handle.organization.inner(),
+                        handle.name
+                    ),
+                )
+            },
+        };
+
+        // We use the triple to populate the builder
+        ValidationIssue::builder()
+            .kind(IssueKind::Consistency(issue.clone()))
+            .line_number(occurrence)
+            .message(reason)
+            .build()
+    }
 }
 
 #[derive(Clone, Debug, PartialEq)]
