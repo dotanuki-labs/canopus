@@ -16,12 +16,15 @@ pub trait CheckGithubConsistency {
 
 pub enum GithubConsistencyChecker {
     ApiBased(octocrab::Octocrab),
+
+    // We opt for a define test doubles with test-only
+    // visibility, pattern-matching them when needed.
+    // In this case, it helps us to avoid compilation struggles
+    // with async fn in traits
     #[cfg(test)]
     FakeChecks(FakeGithubState),
     #[cfg(test)]
     ConsistentState,
-    #[cfg(test)]
-    AlwaysPanic,
 }
 
 impl GithubConsistencyChecker {
@@ -196,8 +199,6 @@ impl CheckGithubConsistency for GithubConsistencyChecker {
             GithubConsistencyChecker::FakeChecks(state) => self.check_registered_fake_user(state, identity.inner()),
             #[cfg(test)]
             GithubConsistencyChecker::ConsistentState => Ok(()),
-            #[cfg(test)]
-            GithubConsistencyChecker::AlwaysPanic => panic!("Unreachable information"),
         }
     }
 
@@ -205,6 +206,8 @@ impl CheckGithubConsistency for GithubConsistencyChecker {
         match self {
             GithubConsistencyChecker::ApiBased(github_client) => {
                 let defined_organization = handle.organization.inner();
+
+                // Simple offline guard
                 if defined_organization != organization {
                     return Err(ConsistencyIssue::TeamDoesNotMatchOrganization(handle.clone()));
                 };
@@ -218,8 +221,6 @@ impl CheckGithubConsistency for GithubConsistencyChecker {
             },
             #[cfg(test)]
             GithubConsistencyChecker::ConsistentState => Ok(()),
-            #[cfg(test)]
-            GithubConsistencyChecker::AlwaysPanic => panic!("Unreachable information"),
         }
     }
 }
