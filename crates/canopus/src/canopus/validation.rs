@@ -230,7 +230,7 @@ impl CodeOwnersValidator {
             .into_iter()
             .map(|owner| {
                 ValidationIssue::builder()
-                    .kind(IssueKind::Configuration(ConfigurationIssue::EmailOwnerNotAllowed))
+                    .kind(IssueKind::Configuration(ConfigurationIssue::EmailOwnerForbidden))
                     .line_number(code_owners.occurrences(owner)[0])
                     .message("email owner is not allowed".to_string())
                     .build()
@@ -257,7 +257,7 @@ impl CodeOwnersValidator {
             .into_iter()
             .map(|owner| {
                 ValidationIssue::builder()
-                    .kind(IssueKind::Configuration(ConfigurationIssue::OnlyGithubTeamOwner))
+                    .kind(IssueKind::Configuration(ConfigurationIssue::OnlyGithubTeamOwnerAllowed))
                     .line_number(code_owners.occurrences(owner)[0])
                     .message("only github team owner is allowed".to_string())
                     .build()
@@ -325,7 +325,7 @@ impl CodeOwnersValidator {
                         format!("'{}' organization does not exist", handle.inner()),
                     )
                 },
-                ConsistencyIssue::TeamDoesNotExistWithinOrganization(handle) => {
+                ConsistencyIssue::TeamDoesNotExist(handle) => {
                     let owner = Owner::GithubTeam(handle.clone());
                     let first_occurrence = code_owners.occurrences(&owner)[0];
                     (
@@ -338,7 +338,7 @@ impl CodeOwnersValidator {
                         ),
                     )
                 },
-                ConsistencyIssue::UserDoesNotBelongToOrganization(handle) => {
+                ConsistencyIssue::OutsiderUser(handle) => {
                     let owner = Owner::GithubUser(handle.clone());
                     let first_occurrence = code_owners.occurrences(&owner)[0];
                     (
@@ -374,7 +374,7 @@ impl CodeOwnersValidator {
                     usize::MAX,
                     format!("failed to list members that belong to '{}' organization", organization),
                 ),
-                ConsistencyIssue::TeamDoesNotMatchWithProvidedOrganization(handle) => {
+                ConsistencyIssue::TeamDoesNotMatchOrganization(handle) => {
                     let owner = Owner::GithubTeam(handle.clone());
                     let first_occurrence = code_owners.occurrences(&owner)[0];
                     (

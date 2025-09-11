@@ -26,17 +26,17 @@ pub enum ConsistencyIssue {
     CannotListMembersInTheOrganization(String),
     CannotVerifyUser(GithubIdentityHandle),
     CannotVerifyTeam(GithubTeamHandle),
-    UserDoesNotExist(GithubIdentityHandle),
     OrganizationDoesNotExist(GithubIdentityHandle),
-    TeamDoesNotMatchWithProvidedOrganization(GithubTeamHandle),
-    TeamDoesNotExistWithinOrganization(GithubTeamHandle),
-    UserDoesNotBelongToOrganization(GithubIdentityHandle),
+    OutsiderUser(GithubIdentityHandle),
+    TeamDoesNotMatchOrganization(GithubTeamHandle),
+    TeamDoesNotExist(GithubTeamHandle),
+    UserDoesNotExist(GithubIdentityHandle),
 }
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum ConfigurationIssue {
-    EmailOwnerNotAllowed,
-    OnlyGithubTeamOwner,
+    EmailOwnerForbidden,
+    OnlyGithubTeamOwnerAllowed,
     OnlyOneOwnerPerEntry,
 }
 
@@ -154,20 +154,20 @@ pub mod test_helpers {
 
         pub fn team_does_not_exist(organization: &str, team: &str) -> IssueKind {
             let handle = GithubTeamHandle::new(GithubIdentityHandle::new(organization.to_string()), team.to_string());
-            IssueKind::Consistency(ConsistencyIssue::TeamDoesNotExistWithinOrganization(handle))
+            IssueKind::Consistency(ConsistencyIssue::TeamDoesNotExist(handle))
         }
 
         pub fn user_does_not_belong_to_organization(name: &str) -> IssueKind {
             let handle = GithubIdentityHandle::new(name.to_string());
-            IssueKind::Consistency(ConsistencyIssue::UserDoesNotBelongToOrganization(handle))
+            IssueKind::Consistency(ConsistencyIssue::OutsiderUser(handle))
         }
 
         pub fn github_owners_only() -> IssueKind {
-            IssueKind::Configuration(ConfigurationIssue::EmailOwnerNotAllowed)
+            IssueKind::Configuration(ConfigurationIssue::EmailOwnerForbidden)
         }
 
         pub fn github_team_owners_only() -> IssueKind {
-            IssueKind::Configuration(ConfigurationIssue::OnlyGithubTeamOwner)
+            IssueKind::Configuration(ConfigurationIssue::OnlyGithubTeamOwnerAllowed)
         }
 
         pub fn single_owner_only() -> IssueKind {

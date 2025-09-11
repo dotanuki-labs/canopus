@@ -118,7 +118,7 @@ impl GithubConsistencyChecker {
             .map(|_| ())?;
 
         if !user_listed_in_organization {
-            return Err(ConsistencyIssue::UserDoesNotBelongToOrganization(target_user));
+            return Err(ConsistencyIssue::OutsiderUser(target_user));
         };
 
         Ok(())
@@ -145,7 +145,7 @@ impl GithubConsistencyChecker {
                 };
 
                 match source.status_code {
-                    StatusCode::NOT_FOUND => ConsistencyIssue::TeamDoesNotExistWithinOrganization(team_handle),
+                    StatusCode::NOT_FOUND => ConsistencyIssue::TeamDoesNotExist(team_handle),
                     _ => ConsistencyIssue::CannotVerifyTeam(team_handle),
                 }
             })
@@ -159,7 +159,7 @@ impl GithubConsistencyChecker {
         };
 
         let handle = GithubIdentityHandle::new(username.to_owned());
-        Err(ConsistencyIssue::UserDoesNotBelongToOrganization(handle))
+        Err(ConsistencyIssue::OutsiderUser(handle))
     }
 
     #[cfg(test)]
@@ -177,7 +177,7 @@ impl GithubConsistencyChecker {
         let org_handle = GithubIdentityHandle::new(org_name.to_owned());
         let handle = GithubTeamHandle::new(org_handle, team_name.to_owned());
 
-        Err(ConsistencyIssue::TeamDoesNotExistWithinOrganization(handle))
+        Err(ConsistencyIssue::TeamDoesNotExist(handle))
     }
 }
 
@@ -206,9 +206,7 @@ impl CheckGithubConsistency for GithubConsistencyChecker {
             GithubConsistencyChecker::ApiBased(github_client) => {
                 let defined_organization = handle.organization.inner();
                 if defined_organization != organization {
-                    return Err(ConsistencyIssue::TeamDoesNotMatchWithProvidedOrganization(
-                        handle.clone(),
-                    ));
+                    return Err(ConsistencyIssue::TeamDoesNotMatchOrganization(handle.clone()));
                 };
 
                 self.check_team_on_github(github_client, handle.organization.inner(), handle.name.as_str())
@@ -477,7 +475,7 @@ mod tests {
             .github_identity(github_organization, &identity)
             .await;
 
-        let expected = ConsistencyIssue::UserDoesNotBelongToOrganization(identity);
+        let expected = ConsistencyIssue::OutsiderUser(identity);
 
         organization_members.assert();
         exists_on_github.assert();
@@ -528,7 +526,7 @@ mod tests {
             .github_team(provided_github_organization, &team_handle)
             .await;
 
-        let expected = ConsistencyIssue::TeamDoesNotMatchWithProvidedOrganization(team_handle);
+        let expected = ConsistencyIssue::TeamDoesNotMatchOrganization(team_handle);
 
         assertor::assert_that!(check).is_equal_to(Err(expected));
     }
@@ -550,7 +548,7 @@ mod tests {
         let team_handle = GithubTeamHandle::new(organization, undefined_team.to_string());
         let check = consistency_checker.github_team(github_organization, &team_handle).await;
 
-        let expected = ConsistencyIssue::TeamDoesNotExistWithinOrganization(team_handle);
+        let expected = ConsistencyIssue::TeamDoesNotExist(team_handle);
 
         team_not_found.assert();
         assertor::assert_that!(check).is_equal_to(Err(expected));

@@ -1,12 +1,12 @@
 # canopus
 
-## What
+> A fast and pragmatic validator for Github Codeowners
 
-> To do
+`canopus` is a small, fast and standalone CLI tool for validating
+[Github Codeowners](https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners)
+written in pure Rust.
 
-## Using
-
-> To do
+Please check our documentation to learn more!
 
 ## License
 
