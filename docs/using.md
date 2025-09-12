@@ -14,6 +14,41 @@ Although small, you may want to check the whole command line interface with
 canopus --help 
 ```
 
+## The configuration file
+
+This tool expects a `<project-root>/.github/canopus.toml` to exist.
+
+This file supports the following options:
+
+```toml
+[general]
+github-organization = "<organization>" # Mandatory
+offline-checks-only = false             # Optional (default : false)
+
+[ownership]
+forbid-email-owners = true              # Optional (default : false)
+enforce-github-teams-owners = false     # Optional (default : false)
+enforce-one-owner-per-line = false      # Optional (default : false)
+```
+
+For large projects managed by multiple teams and leveraging an extensive `CODEOWNERS`
+setting, the general advice is having a configuration like:
+
+```toml
+[general]
+github-organization = "<organization>"
+
+[ownership]
+enforce-github-teams-owners = true
+enforce-one-owner-per-line = true
+```
+
+Note that setting `true` to `enforce-github-teams-owners` overrides
+`forbid-email-owners`. In addition to that, `enforce-one-owner-per-line`
+should help promoting well-defined ownership across project modules, especially on top
+of a Github teams management that praises the
+[Conway's Law](https://en.wikipedia.org/wiki/Conway%27s_law)
+
 ## Validating a `CODEOWNERS` file
 
 To validate your `CODEOWNERS` run
@@ -87,39 +122,3 @@ To delete broken `CODEOWNERS` entries instead
 ```bash
 canopus repair -p <project-root> --remove-lines
 ```
-
-## Configuring the execution
-
-This tool expects a `<project-root>/.github/canopus.toml` to exist.
-
-This file supports the following options:
-
-```toml
-[general]
-github-organization = "dotanuki-labs"   # Mandatory
-offline-checks-only = false             # Optional (default : false)
-
-[ownership]
-forbid-email-owners = true              # Optional (default : false)
-enforce-github-teams-owners = false     # Optional (default : false)
-enforce-one-owner-per-line = false      # Optional (default : false)
-```
-
-For large projects managed by multiple teams and leveraging an extensive `CODEOWNERS`
-setting, the general advice is having a `canopus.toml` like:
-
-```toml
-[general]
-github-organization = "dotanuki-labs"
-offline-checks-only = false
-
-[ownership]
-enforce-github-teams-owners = true
-enforce-one-owner-per-line = true
-```
-
-Note that setting `true` to `enforce-github-teams-owners` overrides
-`forbid-email-owners`. In addition to that, `enforce-one-owner-per-line`
-should help promoting well-defined ownership across project modules, especially on top
-of a Github teams management that praises the
-[Conway's Law](https://en.wikipedia.org/wiki/Conway%27s_law)
