@@ -8,7 +8,7 @@
 Installing with [homebrew](https://brew.sh/) (macOS/Linux)
 
 ```bash
-brew tap dotanuki-labs/canopus https://github.com/dotanuki-labs/canopus.git
+brew tap dotanuki-labs/taps
 brew install canopus
 ```
 
@@ -31,6 +31,12 @@ You can install the latest release directly from
 
 ```bash
 cargo install canopus
+```
+
+You can also build the latest `HEAD` commit with
+
+```bash
+cargo install --git https://github.com/dotanuki-labs/canopus
 ```
 
 ## Other installation methods

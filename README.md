@@ -6,7 +6,8 @@
 [Github Codeowners](https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners)
 written in pure Rust.
 
-Please check our documentation to learn more!
+Please check our [documentation](https://dotanuki-labs.github.io/canopus/)
+to learn more!
 
 ## License
 

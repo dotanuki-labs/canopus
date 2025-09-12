@@ -16,17 +16,28 @@ in offline mode, and eventually also in online mode.
 - sensible opt-ins for better `CODEOWNERS` structure
 
 `canopus` should be able to spot some errors not handled by Github, like
-detecting dangling glob patterns (i.e., the ones won't match any project path).
-For instance, this is the Pull Request preview for a `CODEOWNERS` change
+detecting dangling glob patterns (i.e., the ones won't match any project path)
+and more.
+
+For instance, this is a Pull Request preview for a `CODEOWNERS` change
 for this project, which should be an error since there is no `.samples`
 path around:
 
 ![canopus](assets/canopus-demo.png)
 
-In addition to that, and unlike other competing tools, `canopus` brings
-configuration options to encourage good practices on code ownership, especially on
-large multimodular projects or monorepos.
+In addition to that, `canopus` brings configuration options to encourage good
+practices on code ownership, especially on large multimodular projects or monorepos.
 
 `canopus` is distributed as a self-contained binary compatible with macOS and Linux,
 and also through Docker. This code adheres to the
 [MIT license](https://choosealicense.com/licenses/mit)
+
+## Prior art
+
+`canopus` takes as inspiration a couple of similar projects:
+
+- [toptal/codeowners-checker](https://github.com/toptal/codeowners-checker)
+- [mszostok/codeowners-validator](https://github.com/mszostok/codeowners-validator)
+- [topfreegames/codeowners-verifier](https://github.com/topfreegames/codeowners-verifier)
+
+Thanks to everyone that worked on this problem before ❤️
