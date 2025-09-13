@@ -151,6 +151,12 @@ jobs:
       - name: Project Checkout
         uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
 
+      - name: Prepare Docker release
+        id: prepare-release
+        run: |
+          version=$(grep 'version' Cargo.toml | head -1 | sed "s/version[[:space:]]=[[:space:]]//g" | tr -d '"')
+          echo "version=$version" >>"$GITHUB_OUTPUT"
+
       - name: Docker metadata
         id: docker-metadata
         uses: docker/metadata-action@c1e51972afc2121e065aed6d45c65596fe445f3f # v5
@@ -178,7 +184,7 @@ jobs:
           labels: ${{ steps.docker-metadata.outputs.labels }}
           annotations: ${{ steps.docker-metadata.outputs.annotations }}
           outputs: type=registry,push=true
-          tags: ghcr.io/${{ github.repository }}:${{ github.sha }}-${{ matrix.build-args.platform }}
+          tags: ghcr.io/${{ github.repository }}:${{ steps.prepare-release.outputs.version }}-${{ matrix.build-args.platform }}
 
   deploy-docker-manifest:
     runs-on: ubuntu-24.04
@@ -201,9 +207,10 @@ jobs:
           version=$(grep 'version' Cargo.toml | head -1 | sed "s/version[[:space:]]=[[:space:]]//g" | tr -d '"')
           echo "version=$version" >>"$GITHUB_OUTPUT"
 
-      - name: Update Docker manifest
+      - name: Create new Docker manifest
+        shell: bash
         run: |
-          docker manifest create "$latest" --amend "$package"-amd64 --amend "$package"-arm64
+          docker manifest create ${{ env.latest }} --amend ${{ env.package }}-amd64 --amend ${{ env.package }}-arm64
           docker manifest annotate --arch amd64 --os linux "$latest" "$package"-amd64
           docker manifest annotate --arch arm64 --os linux "$latest" "$package"-arm64
           docker manifest inspect "$latest"
