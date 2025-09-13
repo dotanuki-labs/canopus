@@ -10,6 +10,7 @@ permissions:
   contents: read
   pages: write
   attestations: write
+  packages: write
 
 jobs:
   deploy-docs:
