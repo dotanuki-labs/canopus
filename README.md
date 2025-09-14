@@ -1,10 +1,10 @@
 # canopus
 
 [![best practices](https://www.bestpractices.dev/projects/11177/badge)](https://www.bestpractices.dev/projects/11177)
-[![DeepSource](https://app.deepsource.com/gh/dotanuki-labs/canopus.svg/?label=active+issues&show_trend=true&token=LQiIpIl6403szs6dIY1dhYkx)](https://app.deepsource.com/gh/dotanuki-labs/canopus/)[![ci](https://github.com/dotanuki-labs/gradle-wrapper-validator/actions/workflows/ci.yml/badge.svg)](https://github.com/dotanuki-labs/gradle-wrapper-validator/actions/workflows/ci.yml)
+[![DeepSource](https://app.deepsource.com/gh/dotanuki-labs/canopus.svg/?label=active+issues&show_trend=false&token=LQiIpIl6403szs6dIY1dhYkx)](https://app.deepsource.com/gh/dotanuki-labs/canopus/)
 [![dependencies](https://deps.rs/crate/canopus/0.1.0/status.svg)](https://deps.rs/crate/canopus/0.1.0)
+[![CI](https://github.com/dotanuki-labs/canopus/actions/workflows/ci.yml/badge.svg)](https://github.com/dotanuki-labs/canopus/actions/workflows/ci.yml)
 [![crates.io](https://img.shields.io/crates/v/canopus)](https://crates.io/crates/canopus)
-[![ghcr.io](https://img.shields.io/badge/docker-ghcr.io-blue?logo=docker)](https://github.com/dotanuki-labs/canopus/pkgs/container/canopus)
 ![license](https://img.shields.io/crates/l/canopus)
 
 > A fast and pragmatic validator for Github Codeowners
