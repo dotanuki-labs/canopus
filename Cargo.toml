@@ -3,11 +3,11 @@ members = ["crates/*"]
 resolver = "2"
 
 [workspace.package]
-version = "0.1.0"
+version = "0.1.1"
 edition = "2024"
 rust-version = "1.89.0"
 authors = ["ubiratan.f.soares@gmail.com"]
-description = "An opinionated way to kick-off CLI apps powered by Rust"
+description = "A fast and pragmatic validator for Github Codeowners"
 repository = "https://github.com/dotanuki-labs/canopus"
 homepage = "https://github.com/dotanuki-labs/canopus"
 documentation = "https://github.com/dotanuki-labs/canopus"

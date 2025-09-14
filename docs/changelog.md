@@ -5,6 +5,14 @@ conventions for release notes. All notable project changes will be documented he
 
 ---
 
+## v0.1.1
+
+Released at **2025-09-14**
+
+### Changed
+
+- Fixed `README` for `crates.io` package
+
 ## v0.1.0
 
 Released at **2025-09-13**
