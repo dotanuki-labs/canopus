@@ -7,13 +7,15 @@ use std::env;
 static CALLINECTES_DOCKER_IMAGE: &str = "ghcr.io/dotanuki-labs/callinectes:latest";
 static CALLINECTES_DOCKER_DIGEST: &str = "f5f720d0f61313bb1687a9f64d5dca3d310645d6c48cdea70156f5ef7f29e3b3";
 
+static ENV_VAR_RUNNING_ON_CI: &str = "CI";
+
 pub enum BuildEnvironment {
     CI,
     Local,
 }
 
 pub fn evaluate_build_environment() -> BuildEnvironment {
-    match env::var("CI") {
+    match env::var(ENV_VAR_RUNNING_ON_CI) {
         Ok(_) => CI,
         Err(_) => Local,
     }

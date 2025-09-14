@@ -15,10 +15,12 @@ mod infra;
 #[global_allocator]
 static GLOBAL: Jemalloc = Jemalloc;
 
+static ENV_VAR_GITHUB_TOKEN: &str = "GITHUB_TOKEN";
+
 fn create_canopus() -> anyhow::Result<Canopus> {
     let max_retries_per_request = 3;
 
-    let github_pat = std::env::var("GITHUB_TOKEN").unwrap_or("".to_string());
+    let github_pat = std::env::var(ENV_VAR_GITHUB_TOKEN).unwrap_or("".to_string());
     let user_agent = format!("{}/{}", env!("CARGO_PKG_NAME"), env!("CARGO_PKG_VERSION"));
 
     // Configuration for the Github Client

@@ -10,6 +10,7 @@ use walkdir::WalkDir;
 use xshell::{Shell, cmd};
 
 static DEFAULT_ARTIFACTS_DIR: &str = "artifacts";
+static ENV_VAR_GHA_RUNNER_OS: &str = "RUNNER_OS";
 
 pub fn assemble_artifacts(shell: &Shell, artifact_type: &ArtifactType) -> anyhow::Result<()> {
     match artifact_type {
@@ -38,7 +39,7 @@ fn build_targets(shell: &Shell) -> anyhow::Result<()> {
     match evaluate_build_environment() {
         CI => {
             println!("• Building on CI environment");
-            let is_linux_gha_runner = env::var("RUNNER_OS")
+            let is_linux_gha_runner = env::var(ENV_VAR_GHA_RUNNER_OS)
                 .map(|os| os.eq_ignore_ascii_case("linux"))
                 .unwrap_or(false);
 
