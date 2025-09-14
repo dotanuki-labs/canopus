@@ -5,7 +5,7 @@
 - Understand what changes we are shipping by inspecting unreleased commits
 
 ```bash
-git co main
+git checkout main
 git pull origin main --rebase
 git log $(git describe --abbrev=0 --tags)...HEAD --oneline
 ```
@@ -19,6 +19,13 @@ git checkout -b ufs/release-x.y.z
 
 - Add **notable changes** the to [changelog file](https://github.com/dotanuki-labs/canopus/blob/main/docs/changelog.md)
 - Bump version at [Cargo.toml](https://github.com/dotanuki-labs/canopus/blob/main/Cargo.toml#L3)
+- Commit your changes
+- Ensure everything is ready by running :
+
+```bash
+cargo publish -p canopus --dry-run
+```
+
 - Raise a PR preparing the release
 
 ## Creating a release (GitHub admins-only)
