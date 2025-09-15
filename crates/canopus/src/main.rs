@@ -50,7 +50,6 @@ async fn main() -> anyhow::Result<()> {
         .format_target(false)
         .init();
 
-    println!();
     let command = cli::parse_arguments()?;
     let canopus = create_canopus()?;
     canopus.execute(command).await

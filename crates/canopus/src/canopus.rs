@@ -8,6 +8,7 @@ use crate::canopus::validation::CodeOwnersValidator;
 use crate::core::models::ValidationOutcome;
 use crate::core::models::codeowners::CodeOwnersContext;
 use crate::core::models::config::CanopusConfig;
+use console::style;
 use itertools::Itertools;
 use std::fmt::{Display, Formatter};
 use std::path::PathBuf;
@@ -43,18 +44,22 @@ impl Canopus {
     }
 
     pub async fn execute(&self, requested: CanopusCommand) -> anyhow::Result<()> {
+        println!();
+
         match requested {
             CanopusCommand::ValidateCodeowners(project_path) => {
                 let (context, config) = Self::evaluate(project_path)?;
                 let outcome = self.codeowners_validator.validate(&context, &config).await?;
 
                 match outcome {
-                    ValidationOutcome::NoIssues => println!("No issues found"),
+                    ValidationOutcome::NoIssues => println!("{}", style("No issues found!").cyan()),
                     ValidationOutcome::IssuesDetected(issues) => {
                         issues.iter().for_each(|issue| {
-                            println!("{}", issue);
+                            println!("→ {issue}");
                         });
-                        println!("Some issues found")
+                        println!();
+                        println!("{}", style("Some issues were found").red());
+                        println!();
                     },
                 }
             },
@@ -67,25 +72,34 @@ impl Canopus {
                 let outcome = self.codeowners_validator.validate(&context, &config).await?;
 
                 match outcome {
-                    ValidationOutcome::NoIssues => println!("Nothing to repair"),
+                    ValidationOutcome::NoIssues => println!("{}", style("Nothing to repair!").cyan()),
                     ValidationOutcome::IssuesDetected(issues) => {
                         let unique_issues_per_line = issues.into_iter().unique_by(|issue| issue.line).collect_vec();
 
                         if dry_run {
-                            println!("Dry-run repairing...");
+                            println!("{}", style("Dry run repairing ...").cyan());
+                            println!();
 
                             unique_issues_per_line.iter().for_each(|issue| {
-                                println!("L{} will be repaired ({})", issue.line + 1, issue.context);
+                                println!(
+                                    "→  L{} has issues and will be repaired {}",
+                                    issue.line + 1,
+                                    style(issue.context.to_string()).magenta()
+                                );
                             });
 
                             println!();
-                            println!("More issues can exist for every line above");
                             return Ok(());
                         }
 
                         println!("Repairing CodeOwners...");
+
                         let lines_to_repair = unique_issues_per_line.into_iter().map(|issue| issue.line).collect_vec();
-                        repairing::repair_code_owners(&context, lines_to_repair, remove_lines)?
+                        repairing::repair_code_owners(&context, lines_to_repair, remove_lines)?;
+
+                        println!();
+                        println!("{}", style("CODEOWNERS file repaired with success").cyan());
+                        println!();
                     },
                 }
             },
