@@ -584,6 +584,7 @@ mod consistency_validation_tests {
     use crate::core::models::{ValidationIssue, ValidationOutcome};
     use crate::infra::github;
     use assertor::{EqualityAssertion, ResultAssertion};
+    use console::style;
     use indoc::indoc;
 
     #[tokio::test]
@@ -630,10 +631,12 @@ mod consistency_validation_tests {
 
         let validation = validator.validate(&context, &config).await.unwrap();
 
+        let formatted_feedback = format!("user {} does not belong to this organization", style("ufs").cyan());
+
         let user_not_found = ValidationIssue::builder()
             .kind(ValidationIssueKindFactory::user_does_not_belong_to_organization("ufs"))
             .line_number(1)
-            .description("'ufs' user does not belong to this organization")
+            .message(formatted_feedback)
             .build();
 
         let expected = ValidationOutcome::IssuesDetected(vec![user_not_found]);
@@ -662,13 +665,19 @@ mod consistency_validation_tests {
 
         let validation = validator.validate(&context, &config).await.unwrap();
 
+        let formatted_feedback = format!(
+            "{} team not found for {} organization",
+            style("devops").cyan(),
+            style("dotanuki-labs").cyan()
+        );
+
         let user_not_found = ValidationIssue::builder()
             .kind(ValidationIssueKindFactory::team_does_not_exist(
                 "dotanuki-labs",
                 "devops",
             ))
             .line_number(2)
-            .description("'devops' team does not belong to 'dotanuki-labs' organization")
+            .message(formatted_feedback)
             .build();
 
         let expected = ValidationOutcome::IssuesDetected(vec![user_not_found]);

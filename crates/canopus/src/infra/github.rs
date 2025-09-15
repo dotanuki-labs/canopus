@@ -104,7 +104,6 @@ impl GithubConsistencyChecker {
             .profile()
             .await
             .map_err(|incoming| {
-                println!("{:?}", incoming);
                 log::info!("Failed to fetch info for {} user on Github", user);
 
                 let handle = target_user.clone();
@@ -334,8 +333,6 @@ mod tests {
                 }"#;
 
             let user = user_template.replace("<username>", username);
-
-            println!("{user}");
 
             when.method("GET").path(format!("/users/{}", username));
 

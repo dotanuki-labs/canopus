@@ -3,6 +3,7 @@
 
 use crate::core::models::codeowners::CodeOwners;
 use crate::core::models::handles::{GithubIdentityHandle, GithubTeamHandle, Owner};
+use console::style;
 use std::fmt::{Display, Formatter};
 
 pub mod codeowners;
@@ -46,7 +47,7 @@ impl ConsistencyIssue {
                 (
                     self,
                     first_occurrence,
-                    format!("'{}' user does not exist", handle.inner()),
+                    format!("{} user does not exist", style(&handle.inner()).cyan()),
                 )
             },
             ConsistencyIssue::OrganizationDoesNotExist(handle) => {
@@ -55,7 +56,7 @@ impl ConsistencyIssue {
                 (
                     self,
                     first_occurrence,
-                    format!("'{}' organization does not exist", handle.inner()),
+                    format!("{} organization does not exist", style(&handle.inner()).cyan()),
                 )
             },
             ConsistencyIssue::TeamDoesNotExist(handle) => {
@@ -65,9 +66,9 @@ impl ConsistencyIssue {
                     self,
                     first_occurrence,
                     format!(
-                        "'{}' team does not belong to '{}' organization",
-                        handle.name,
-                        handle.organization.inner()
+                        "{} team not found for {} organization",
+                        style(&handle.name).cyan(),
+                        style(&handle.organization.inner()).cyan()
                     ),
                 )
             },
@@ -77,7 +78,10 @@ impl ConsistencyIssue {
                 (
                     self,
                     first_occurrence,
-                    format!("'{}' user does not belong to this organization", handle.inner()),
+                    format!(
+                        "user {} does not belong to this organization",
+                        style(&handle.inner()).cyan()
+                    ),
                 )
             },
             ConsistencyIssue::CannotVerifyUser(handle) => {
@@ -86,7 +90,7 @@ impl ConsistencyIssue {
                 (
                     self,
                     first_occurrence,
-                    format!("cannot confirm if user '{}' exists", handle.inner()),
+                    format!("cannot confirm if user {} exists", style(&handle.inner()).cyan()),
                 )
             },
             ConsistencyIssue::CannotVerifyTeam(handle) => {
@@ -96,9 +100,10 @@ impl ConsistencyIssue {
                     self,
                     first_occurrence,
                     format!(
-                        "cannot confirm whether '{}/{}' team exists",
-                        handle.organization.inner(),
-                        handle.name
+                        "cannot confirm whether {}{}{} team exists",
+                        style(&handle.organization.inner()).cyan(),
+                        style("/").cyan(),
+                        style(&handle.name).cyan(),
                     ),
                 )
             },
@@ -114,9 +119,10 @@ impl ConsistencyIssue {
                     self,
                     first_occurrence,
                     format!(
-                        "team '{}/{}' does not belong to this organization",
-                        handle.organization.inner(),
-                        handle.name
+                        "team {}{}{} does not belong to this organization",
+                        style(&handle.organization.inner()).cyan(),
+                        style("/").cyan(),
+                        style(&handle.name).cyan(),
                     ),
                 )
             },
@@ -148,9 +154,9 @@ pub enum IssueKind {
 impl Display for IssueKind {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
-            IssueKind::Structural(_) => write!(f, "structure"),
-            IssueKind::Consistency(_) => write!(f, "consistency"),
-            IssueKind::Configuration(_) => write!(f, "configuration"),
+            IssueKind::Structural(_) => write!(f, "[structure]"),
+            IssueKind::Consistency(_) => write!(f, "[consistency]"),
+            IssueKind::Configuration(_) => write!(f, "[configuration]"),
         }
     }
 }
@@ -159,7 +165,7 @@ impl Display for IssueKind {
 pub struct ValidationIssue {
     pub line: usize,
     pub context: String,
-    kind: IssueKind,
+    pub kind: IssueKind,
 }
 
 #[derive(Default)]
@@ -208,9 +214,20 @@ impl ValidationIssue {
 impl Display for ValidationIssue {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         if self.line == usize::MAX {
-            write!(f, "Preconditions : {} [{}]", self.context, self.kind)
+            write!(
+                f,
+                "Preconditions : {} {}",
+                self.context,
+                style(self.kind.to_string()).magenta()
+            )
         } else {
-            write!(f, "L{} : {} [{}]", self.line + 1, self.context, self.kind)
+            write!(
+                f,
+                "L{} : {} {}",
+                self.line + 1,
+                self.context,
+                style(self.kind.to_string()).magenta()
+            )
         }
     }
 }
