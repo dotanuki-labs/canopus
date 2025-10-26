@@ -1,2 +1,5 @@
+# Copyright 2025 Dotanuki Labs
+# SPDX-License-Identifier: MIT
+
 # Needed while this repo is private. Removes after open-sourced
 exclude_path = ["docs"]

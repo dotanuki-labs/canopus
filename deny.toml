@@ -1,3 +1,6 @@
+# Copyright 2025 Dotanuki Labs
+# SPDX-License-Identifier: MIT
+
 [advisories]
 ignore = [
     "RUSTSEC-2025-0052", # `async-std` has been discontinued
