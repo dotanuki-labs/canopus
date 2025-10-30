@@ -7,7 +7,7 @@ use std::env::current_dir;
 
 fn sut() -> Command {
     let _ = env_logger::builder().is_test(true).try_init();
-    Command::cargo_bin("canopus").expect("Failed to create a command")
+    assert_cmd::cargo::cargo_bin_cmd!("canopus")
 }
 
 fn find_project_root() -> String {

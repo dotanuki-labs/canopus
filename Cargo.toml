@@ -24,7 +24,7 @@ xtasks = { path = "crates/xtasks" }
 
 anyhow = "=1.0.100"
 assertor = "=0.0.4"
-assert_cmd = "=2.0.17"
+assert_cmd = "=2.1.1"
 better-panic = "=0.3.0"
 clap = "=4.5.51"
 console = "0.16.1"
