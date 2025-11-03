@@ -23,12 +23,13 @@ runs:
           run: rustup show active-toolchain
 
         - name: Install additional tools (Mac-only)
-          if:  ${{ runner.os == 'macOS'}}
+          if: ${{ runner.os == 'macOS'}}
           shell: bash
           run: brew install coreutils
 
         - name: Install additional tools (Linux-only)
-          if:  ${{ runner.os == 'Linux' && inputs.install-extra-tools != 'false' }}
+          if: ${{ runner.os == 'Linux' && inputs.install-extra-tools != 'false' }}
           shell: bash
           run: |
+            sudo apt-get update
             sudo apt-get install -qy musl-dev musl-tools binutils-aarch64-linux-gnu gcc-aarch64-linux-gnu
