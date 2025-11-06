@@ -1,20 +1,6 @@
 # Copyright 2025 Dotanuki Labs
 # SPDX-License-Identifier: MIT
 
-[target.'cfg(all())']
-rustflags = [
-    # Extended checks for clippy
-    "-Dunsafe_code",
-    "-Wclippy::all",
-    "-Wclippy::todo",
-    "-Wclippy::unimplemented",
-    "-Wclippy::unnested_or_patterns",
-    "-Wclippy::zero_sized_map_values",
-    "-Wfuture_incompatible",
-    "-Wnonstandard_style",
-    "-Wrust_2018_idioms",
-]
-
 [target.x86_64-unknown-linux-musl]
 rustflags = ["-Ctarget-feature=+crt-static"]
 
