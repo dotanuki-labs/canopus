@@ -42,3 +42,6 @@ indoc.workspace = true
 httpmock.workspace = true
 predicates.workspace = true
 temp-dir.workspace = true
+
+[lints]
+workspace = true

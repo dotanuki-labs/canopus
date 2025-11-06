@@ -19,9 +19,6 @@ license = "MIT"
 categories = ["command-line-utilities"]
 
 [workspace.dependencies]
-canopus = { path = "crates/canopus" }
-xtasks = { path = "crates/xtasks" }
-
 anyhow = "=1.0.100"
 assertor = "=0.0.4"
 assert_cmd = "=2.1.1"
@@ -51,6 +48,21 @@ tokio = { version = "=1.48.0"}
 toml = "0.9.5"
 walkdir = "=2.5.0"
 xshell = "=0.2.7"
+
+[workspace.lints.rust]
+future_incompatible = { level = "deny", priority = -1 }
+nonstandard_style = "deny"
+rust_2018_idioms = "deny"
+unsafe_code = "deny"
+unused_lifetimes = "deny"
+unused_macro_rules = "deny"
+unused_qualifications = { level = "deny", priority = -1 }
+
+[workspace.lints.clippy]
+unimplemented = "deny"
+unnested_or_patterns = "deny"
+todo = "deny"
+zero_sized_map_values = "deny"
 
 [profile.release]
 strip = true
