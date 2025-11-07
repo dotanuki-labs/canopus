@@ -59,9 +59,11 @@ unused_macro_rules = "deny"
 unused_qualifications = { level = "deny", priority = -1 }
 
 [workspace.lints.clippy]
-unimplemented = "deny"
-unnested_or_patterns = "deny"
+fn_params_excessive_bools = "deny"
 todo = "deny"
+unimplemented = "deny"
+unneeded_field_pattern = "deny"
+unnested_or_patterns = "deny"
 zero_sized_map_values = "deny"
 
 [profile.release]
