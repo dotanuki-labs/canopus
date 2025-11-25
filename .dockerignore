@@ -2,10 +2,8 @@ target
 .cargo
 .github
 .gitattributes
-.markdownlint.yaml
 .mergify.yml
 .editorconfig
 deny.toml
 docs
 LICENSE
-lychee.toml
