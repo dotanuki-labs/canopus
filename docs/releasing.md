@@ -33,7 +33,7 @@ cargo publish -p canopus --dry-run
 - Ensure the next release is prepared (as described above)
 - Execute the [CD Workflow](https://github.com/dotanuki-labs/canopus/actions/workflows/cd.yml)
 - Go to the [releases page](https://github.com/dotanuki-labs/canopus/releases)
-- Review the release draft and add any final touches (for instance, updating `RenovateBot` identity name)
+- Review the release draft and add final touches (e.g. updating `RenovateBot` identity name)
 - Publish the release 🚀
 
 ## Updating distributions

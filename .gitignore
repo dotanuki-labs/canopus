@@ -8,4 +8,5 @@ xtasks.cdx.json
 .fleet
 .DS_STORE
 .idea
+.rumdl-cache
 
