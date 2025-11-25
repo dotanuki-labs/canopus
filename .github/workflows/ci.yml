@@ -29,7 +29,7 @@ jobs:
         uses: crate-ci/committed@bb02f309663f9baced8dbd5fdd80c6369ddf3efd # v1.1.8
 
       - name: Lint Markdown files
-        uses: dotanuki-labs/github-actions/quality/markdown@main
+        uses: dotanuki-labs/github-actions/quality/markdown@771d6c7a54dca1c45d374cade8f9f5ff13f82782
 
       - name: Check MIT license on source files
         uses: korandoru/hawkeye@2f80559b06187bcd1aa7bca5138fe5e5c53e275f # v6.3.0
@@ -48,7 +48,7 @@ jobs:
         uses: actions/checkout@1af3b93b6815bc44a9784bd300feb67ff0d1eeb3 # v6.0.0
 
       - name: Build and archive documentation assets
-        uses: dotanuki-labs/github-actions/foss/prepare-ghpages@main
+        uses: dotanuki-labs/github-actions/foss/prepare-ghpages@771d6c7a54dca1c45d374cade8f9f5ff13f82782
 
       - name: Deploy assets to GitHub Pages
         id: deployment
