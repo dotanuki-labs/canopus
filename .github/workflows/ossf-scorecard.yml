@@ -11,7 +11,8 @@ on:
     branches:
       - main
 
-  check:
+jobs:
+  report:
     permissions:
       security-events: write
       id-token: write
