@@ -1,0 +1,39 @@
+# Copyright 2025 Dotanuki Labs
+# SPDX-License-Identifier: MIT
+
+name: ossf-scorecards
+
+permissions:
+  contents: read
+
+on:
+  push:
+    branches:
+      - main
+
+  check:
+    permissions:
+      security-events: write
+      id-token: write
+
+    timeout-minutes: 10
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Project checkout
+        uses: actions/checkout@1af3b93b6815bc44a9784bd300feb67ff0d1eeb3 # v6.0.0
+        with:
+          persist-credentials: false
+
+      - name: Run OSSF security scorecard analysis
+        uses: ossf/scorecard-action@4eaacf0543bb3f2c246792bd56e8cdeffafb205a # v2.4.3
+        with:
+          results_file: scorecard-results.sarif
+          results_format: sarif
+          publish_results: true
+
+      - name: Save scorecard analysis results
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0
+        with:
+          name: SARIF file
+          path: scorecard-results.sarif
