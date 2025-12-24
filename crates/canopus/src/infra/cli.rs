@@ -5,7 +5,7 @@ use crate::canopus::CanopusCommand;
 use crate::canopus::CanopusCommand::{RepairCodeowners, ValidateCodeowners};
 use crate::infra::cli::Commands::Validate;
 use Commands::Repair;
-use clap::{Args, Parser, Subcommand, arg};
+use clap::{Args, Parser, Subcommand};
 use std::path::PathBuf;
 
 #[derive(Args, Debug)]
