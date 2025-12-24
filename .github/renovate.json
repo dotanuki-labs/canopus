@@ -42,17 +42,6 @@
             "matchStrings": [
                 "(channel|rust-version)\\s*=\\s*\"(?<currentValue>\\d+\\.\\d+(\\.\\d+)?)\""
             ]
-        },
-        {
-            "customType": "regex",
-            "datasourceTemplate": "docker",
-            "currentValueTemplate": "latest",
-            "registryUrlTemplate": "https://ghcr.io",
-            "depNameTemplate": "dotanuki-labs/callinectes",
-            "managerFilePatterns": ["/crates/xtasks/src/utils\\.rs$/"],
-            "matchStrings": [
-                "static CALLINECTES_DOCKER_DIGEST: &str = \"(?<currentDigest>sha256:[a-f0-9]+)\""
-            ]
         }
     ]
 }
