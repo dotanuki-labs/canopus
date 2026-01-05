@@ -26,7 +26,7 @@ jobs:
 
       - name: Check commit conventions
         if: ${{ github.ref != 'refs/heads/main' }}
-        uses: crate-ci/committed@bb02f309663f9baced8dbd5fdd80c6369ddf3efd # v1.1.8
+        uses: crate-ci/committed@9865da4f86a4523e4a80597d7760763d86adafd8 # v1.1.9
 
       - name: Lint Markdown files
         uses: rvben/rumdl@464ce1956cd4240c1a3f997d4e276a6f5748f0fa # v0.0.207
