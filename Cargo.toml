@@ -21,7 +21,7 @@ categories = ["command-line-utilities"]
 [workspace.dependencies]
 anyhow = "=1.0.100"
 assertor = "=0.0.4"
-assert_cmd = "=2.1.1"
+assert_cmd = "=2.1.2"
 better-panic = "=0.3.0"
 clap = "=4.5.54"
 console = "0.16.1"
