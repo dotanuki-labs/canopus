@@ -32,7 +32,7 @@ jobs:
         uses: rvben/rumdl@9ff781f90a8349ec9c8dfa6366cd59fbdc23570d # v0.1.43
 
       - name: Check MIT license on source files
-        uses: korandoru/hawkeye@9f58c8ed5347f5dbe58a4a393aaea2be293d6bda # v6.4.1
+        uses: korandoru/hawkeye@c57037afedf940370c41eb660837c8aa928d472a # v6.5.1
 
   docs-build-deploy:
     needs: docs-lint
