@@ -22,7 +22,7 @@ jobs:
           fetch-depth: 0
 
       - name: Check typos on source files
-        uses: crate-ci/typos@44e2070e6017f834bf069503acb35ca0ca0b75f2 # v1.47.1
+        uses: crate-ci/typos@37bb98842b0d8c4ffebdb75301a13db0267cef89 # v1.47.2
 
       - name: Check commit conventions
         if: ${{ github.ref != 'refs/heads/main' }}
