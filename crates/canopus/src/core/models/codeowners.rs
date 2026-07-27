@@ -237,10 +237,7 @@ impl TryFrom<PathBuf> for CodeOwnersContext {
             contents: codeowners_content,
         };
 
-        log::info!(
-            "Codeowners config found at : {}",
-            &attributes.codeowners_path.to_string_lossy()
-        );
+        log::info!("Codeowners config found at : {:?}", attributes.codeowners_path);
 
         Ok(attributes)
     }
