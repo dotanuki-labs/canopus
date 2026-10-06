@@ -29,7 +29,7 @@ jobs:
         uses: crate-ci/committed@faeed42f2e10c244533a01525f13c4d8b6ce383f # v1.1.11
 
       - name: Lint Markdown files
-        uses: rvben/rumdl@bb84a49a85625b31ecf6c3e58b7bca7c75fbfefb # v0.2.77
+        uses: rvben/rumdl@9c4cc2a2ebe176de68e1788106e25af8a9bd3899 # v0.2.78
 
       - name: Check MIT license on source files
         run:
